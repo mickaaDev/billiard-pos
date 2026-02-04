@@ -1,0 +1,42 @@
+{% extends "core/base.html" %}
+
+{% block content %}
+<div style="max-width: 500px; margin: 40px auto; background: white; padding: 30px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); border: 1px solid #eee;">
+    
+    <div style="text-align: center; border-bottom: 2px dashed #eee; padding-bottom: 20px; margin-bottom: 20px;">
+        <h1 style="margin: 0; color: #2c3e50;">ОКОНЧАТЕЛЬНЫЙ СЧЕТ</h1>
+        <p style="color: #888;">Сессия #{{ session.id }} | {{ session.end_time|date:"M d, Y H:i" }}</p>
+    </div>
+
+    <div style="margin-bottom: 20px;">
+        <h3 style="font-size: 1em; color: #888; text-transform: uppercase;">Стол</h3>
+        <p style="font-size: 1.2em; font-weight: bold; margin: 5px 0;">{{ session.resource.name }}</p>
+    </div>
+
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 30px;">
+    <tr style="border-bottom: 1px solid #f4f4f4;">
+        <td style="padding: 10px 0;">Использованное время ({{ duration_minutes }} мин)</td>
+        <td style="text-align: right; font-weight: bold;">{{ time_cost }} сом</td>
+    </tr>
+    {% for item in session.items.all %}
+    <tr style="border-bottom: 1px solid #f4f4f4;">
+        <td style="padding: 10px 0;">{{ item.product.name }} (x{{ item.quantity }})</td>
+        <td style="text-align: right; font-weight: bold;">{{ item.total_price }} сом</td>
+    </tr>
+    {% endfor %}
+    <tr>
+        <td style="padding: 20px 0; font-size: 1.5em; font-weight: bold;">ОБЩИЙ ИТОГ</td>
+        <td style="padding: 20px 0; text-align: right; font-size: 1.5em; font-weight: bold; color: #28a745;">{{ grand_total }} сом</td>
+    </tr>
+</table>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        <button onclick="window.print()" style="padding: 12px; background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; cursor: pointer; font-weight: bold;">
+            🖨️ Распечатать чек
+        </button>
+        <a href="{% url 'core:dashboard' %}" style="padding: 12px; background: #2c3e50; color: white; text-decoration: none; text-align: center; border-radius: 8px; font-weight: bold;">
+            Закрыть
+        </a>
+    </div>
+</div>
+{% endblock %}

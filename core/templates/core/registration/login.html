@@ -1,0 +1,36 @@
+{% extends "core/base.html" %}
+
+{% block content %}
+<div style="max-width: 400px; margin: 50px auto; padding: 20px; font-family: sans-serif;">
+    <div style="background: white; padding: 30px; border-radius: 12px; border: 1px solid #eee; box-shadow: 0 4px 15px rgba(0,0,0,0.1); text-align: center;">
+        
+        <div style="font-size: 3em; margin-bottom: 10px;">🎱</div>
+        <h2 style="margin-top: 0; color: #2c3e50;">Billiard POS Login</h2>
+        <p style="color: #666; font-size: 0.9em; margin-bottom: 25px;">Пожалуйста, войдите в систему, чтобы управлять сессиями.</p>
+
+        {% if form.errors %}
+            <div style="background: #f8d7da; color: #721c24; padding: 10px; border-radius: 6px; margin-bottom: 20px; font-size: 0.85em;">
+                Ваше имя пользователя и пароль не совпадают. Пожалуйста, попробуйте еще раз.
+            </div>
+        {% endif %}
+
+        <form method="post" action="{% url 'login' %}">
+            {% csrf_token %}
+            
+            <div style="text-align: left; margin-bottom: 15px;">
+                <label style="display: block; font-weight: bold; margin-bottom: 5px; color: #444;">Имя пользователя</label>
+                <input type="text" name="username" required style="width: 100%; padding: 12px; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; font-size: 16px;">
+            </div>
+
+            <div style="text-align: left; margin-bottom: 25px;">
+                <label style="display: block; font-weight: bold; margin-bottom: 5px; color: #444;">Пароль</label>
+                <input type="password" name="password" required style="width: 100%; padding: 12px; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; font-size: 16px;">
+            </div>
+
+            <button type="submit" style="width: 100%; background: #2c3e50; color: white; padding: 15px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 1em;">
+                Войти
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,125 @@
+{% extends "core/base.html" %}
+
+{% block content %}
+
+<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 20px; padding: 20px;">
+    {% for item in resources_with_sessions %}
+    <div id="resource-card-{{ item.resource.id }}" style="aspect-ratio: 1 / 1; border-radius: 15px; border: 1px solid #eee; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.08); background: white; 
+        {% if item.is_overtime %} animation: pulse-border 1.5s infinite; border: 2px solid #dc3545; {% endif %}">
+        
+        <div style="padding: 15px; flex-grow: 1; text-align: center;">
+            <div style="font-size: 0.8em; text-transform: uppercase; color: #888; margin-bottom: 5px;">
+                {% if item.resource.type == 'billiard' %} 🎱 {% else %} 🎮 {% endif %} {{ item.resource.get_type_display }}
+            </div>
+            <h2 style="margin: 0; font-size: 1.4em; color: #2c3e50;">{{ item.resource.name }}</h2>
+            <div style="margin-top: 5px; font-weight: bold; color: #555;">
+                {{ item.resource.price_per_hour }} <small>/ час</small>
+            </div>
+        </div>
+
+        {% if item.session %}
+            <a href="{% url 'core:session_detail' item.session.id %}" style="text-decoration: none;">
+                <div id="status-box-{{ item.resource.id }}" style="background: {% if item.is_overtime %}#dc3545{% else %}#fff5f5{% endif %}; border-top: 1px solid #ffebeb; padding: 15px; text-align: center; transition: 0.3s;">
+                    
+                    <div id="status-text-{{ item.resource.id }}" style="color: {% if item.is_overtime %}#ffffff{% else %}#c53030{% endif %}; font-weight: bold; font-size: 0.9em; display: flex; align-items: center; justify-content: center; gap: 5px;">
+                        {% if item.is_overtime %} ⚠️ ВРЕМЯ ИСТЕКЛО {% else %} 🔴 ЗАНЯТО {% endif %}
+                    </div>
+                    
+                    <div style="margin-top: 5px;">
+                        {% if item.session.mode == 'PREPAID' %}
+                            <span id="badge-{{ item.resource.id }}" style="background: rgba(255, 193, 7, 0.2); color: {% if item.is_overtime %}#ffffff{% else %}#856404{% endif %}; padding: 1px 6px; border-radius: 4px; font-size: 0.7em; font-weight: bold; border: 1px solid rgba(0,0,0,0.1);">
+                                ПРЕДОПЛАТА
+                            </span>
+                        {% else %}
+                            <span id="badge-{{ item.resource.id }}" style="background: rgba(23, 162, 184, 0.2); color: {% if item.is_overtime %}#ffffff{% else %}#0c5460{% endif %}; padding: 1px 6px; border-radius: 4px; font-size: 0.7em; font-weight: bold; border: 1px solid rgba(0,0,0,0.1);">
+                                ОТКРЫТО
+                            </span>
+                        {% endif %}
+                    </div>
+
+                    <div id="start-time-{{ item.resource.id }}" style="font-size: 0.75em; color: {% if item.is_overtime %}#ffffff{% else %}#c53030{% endif %}; margin-top: 5px; opacity: 0.9;">
+                        Начато {{ item.session.start_time|time:"H:i" }}
+                    </div>
+                </div>
+            </a>
+        {% else %}
+            <a href="{% url 'core:resource_details' item.resource.pk %}" style="text-decoration: none;">
+                <div style="background: #f0fdf4; border-top: 1px solid #dcfce7; padding: 15px; text-align: center;">
+                    <div style="color: #16a34a; font-weight: bold; font-size: 0.9em;">
+                        🟢 ДОСТУПНО
+                    </div>
+                    <div style="font-size: 0.75em; color: #15803d; margin-top: 3px;">
+                        Открытый стол
+                    </div>
+                </div>
+            </a>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+
+<style>
+@keyframes pulse-border {
+    0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.4); }
+    70% { box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
+}
+</style>
+
+<script>
+    function refreshDashboardStatus() {
+        fetch("{% url 'core:dashboard_api' %}")
+            .then(response => response.json())
+            .then(data => {
+                data.resources.forEach(res => {
+                    const card = document.getElementById(`resource-card-${res.id}`);
+                    const statusBox = document.getElementById(`status-box-${res.id}`);
+                    const statusText = document.getElementById(`status-text-${res.id}`);
+                    const badge = document.getElementById(`badge-${res.id}`);
+                    const startTime = document.getElementById(`start-time-${res.id}`);
+                    
+                    if (res.is_overtime) {
+                        // 1. Outer card border and pulse
+                        card.style.animation = "pulse-border 1.5s infinite";
+                        card.style.border = "2px solid #dc3545";
+                        
+                        // 2. Change bottom block to solid RED
+                        if (statusBox) {
+                            statusBox.style.background = "#dc3545";
+                        }
+                        
+                        // 3. Update text to WHITE and change content
+                        if (statusText) {
+                            statusText.style.color = "#ffffff";
+                            statusText.innerHTML = "⚠️ ВРЕМЯ ИСТЕКЛО";
+                        }
+                        
+                        // 4. Ensure badges and labels are white for visibility
+                        if (badge) badge.style.color = "#ffffff";
+                        if (startTime) startTime.style.color = "#ffffff";
+
+                    } else if (res.is_active) {
+                        // Keep current occupied styles if not overtime
+                        card.style.animation = "none";
+                        card.style.border = "1px solid #eee";
+                        
+                        if (statusBox) {
+                            statusBox.style.background = "#fff5f5";
+                        }
+                        if (statusText) {
+                            statusText.style.color = "#c53030";
+                            statusText.innerHTML = "🔴 ЗАНЯТО";
+                        }
+                        // Reset badge colors based on mode could be complex here, 
+                        // so we usually just handle the overtime switch.
+                    }
+                });
+            })
+            .catch(err => console.log("Dashboard update failed", err));
+    }
+
+    // Checking every 15 seconds keeps it responsive
+    setInterval(refreshDashboardStatus, 60000);
+</script>
+
+{% endblock %}

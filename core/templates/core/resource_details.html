@@ -1,0 +1,144 @@
+{% extends "core/base.html" %}
+
+{% block content %}
+<div style="max-width: 800px; margin: 20px auto; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #333;">
+    
+    <div style="margin-bottom: 20px;">
+        <a href="{% url 'core:dashboard' %}" style="color: #666; text-decoration: none; font-size: 0.9em;">← Назад на главную</a>
+    </div>
+
+    <div style="background: white; padding: 25px; border-radius: 12px; border: 1px solid #eee; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
+        <div>
+            <h1 style="margin: 0; font-size: 1.8em; color: #2c3e50;">{{ resource.name }}</h1>
+            <span style="display: inline-block; margin-top: 5px; padding: 4px 12px; background: #eef2f7; color: #555; border-radius: 20px; font-size: 0.85em; font-weight: bold;">
+                {{ resource.get_type_display }}
+            </span>
+        </div>
+        <div style="text-align: right;">
+            <small style="display: block; color: #888; text-transform: uppercase; font-size: 0.75em; letter-spacing: 1px;">Цена</small>
+            <div style="font-size: 1.5em; font-weight: bold; color: #2c3e50;">
+                {{ resource.price_per_hour }} <small style="font-size: 0.6em; color: #999;">сом/час</small>
+            </div>
+        </div>
+    </div>
+
+    <div style="background: #fff; border: 1px solid #ddd; border-radius: 12px; padding: 25px;">
+        <h2 style="margin-top: 0; margin-bottom: 20px; font-size: 1.3em; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px;">
+            Текущий статус
+        </h2>
+
+        {% if active_session %}
+            <div style="border: 1px solid #eee; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.08);">
+                
+                <div style="padding: 15px 20px; background: #f8f9fa; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <span style="background: #ffc107; color: #000; padding: 2px 8px; border-radius: 4px; font-size: 0.75em; font-weight: bold; margin-right: 10px;">LIVE</span>
+                        <strong style="color: #2c3e50;">Сессия #{{ active_session.id }}</strong>
+                    </div>
+                    <div style="text-align: right; color: #666; font-size: 0.85em;">
+                        Начато: {{ active_session.start_time|time:"H:i" }}
+                    </div>
+                </div>
+
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="background: #fafafa; border-bottom: 1px solid #eee;">
+                            <th style="padding: 12px 20px; text-align: left; font-size: 0.8em; color: #888; text-transform: uppercase;">Описание</th>
+                            <th style="padding: 12px 20px; text-align: right; font-size: 0.8em; color: #888; text-transform: uppercase;">Количество</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr style="border-bottom: 1px solid #f9f9f9;">
+                            <td style="padding: 15px 20px;">
+                                <div style="font-weight: 600;">Использованное время</div>
+                                <small style="color: #999;">({{ duration_minutes }} прошло минут)</small>
+                            </td>
+                            <td style="padding: 15px 20px; text-align: right; font-weight: 600;">{{ time_cost|default:"0.00" }} сом</td>
+                        </tr>
+
+                        {% for item in active_session.items.all %}
+                        <tr style="border-bottom: 1px solid #f9f9f9;">
+                            <td style="padding: 15px 20px;">
+                                <div style="font-weight: 600;">{{ item.product.name }}</div>
+                                <small style="color: #999;">{{ item.price_at_order }} сом × {{ item.quantity }}</small>
+                            </td>
+                            <td style="padding: 15px 20px; text-align: right; font-weight: 600;">{{ item.total_price }} сом</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+
+                <div style="background: #2c3e50; color: white; padding: 20px; display: flex; justify-content: space-between; align-items: center;">
+                    <span style="text-transform: uppercase; font-size: 0.9em; letter-spacing: 1px; opacity: 0.8;">Общая сумма к оплате</span>
+                    <span style="font-size: 1.8em; font-weight: bold;">{{ grand_total|default:"0.00" }} сом</span>
+                </div>
+            </div>
+
+            <form action="{% url 'core:close_session' active_session.pk %}" method="post" style="margin-top: 20px;">
+                {% csrf_token %}
+                
+                {% if overtime_minutes > 0 %}
+                <div style="background: #fff3cd; border: 1px solid #ffeeba; padding: 15px; border-radius: 8px; margin-bottom: 15px; display: flex; align-items: center; gap: 12px; border-left: 5px solid #ffc107;">
+                    <input type="checkbox" id="charge_overtime" name="charge_overtime" value="true" style="width: 22px; height: 22px; cursor: pointer;">
+                    <label for="charge_overtime" style="color: #856404; font-size: 0.95em; cursor: pointer;">
+                        <strong>Overtime Detected:</strong> Плата за {{ overtime_minutes }} дополнительные минуты?
+                    </label>
+                </div>
+                {% endif %}
+
+                <div style="display: flex; gap: 10px;">
+                    <button type="submit" onclick="return confirm('⚠️ Stop timer and finalize bill?')" style="flex: 2; background: #dc3545; color: white; padding: 15px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 1em; box-shadow: 0 4px 0 #a71d2a;">
+                        ЗАВЕРШИТЬ и ЗАКРЫТЬ
+                    </button>
+                    <a href="{% url 'core:session_detail' active_session.pk %}" style="flex: 1; background: #6c757d; color: white; padding: 15px; text-decoration: none; text-align: center; border-radius: 8px; font-weight: bold; font-size: 1em; display: inline-block;">
+                        ДОБАВИТЬ ТОВАРЫ
+                    </a>
+                </div>
+            </form>
+
+        {% else %}
+            <div style="background: #fdfdfd; border: 2px dashed #ddd; border-radius: 12px; padding: 30px; text-align: center;">
+                <p style="color: #7f8c8d; margin-bottom: 25px;">Нет активной сессии. Выберите режим для начала..</p>
+                
+                <form action="{% url 'core:start_session' resource.id %}" method="post" style="max-width: 400px; margin: 0 auto; text-align: left;">
+                    {% csrf_token %}
+                    
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; font-weight: bold; margin-bottom: 8px; color: #444;">Режим сессии:</label>
+                        <select name="mode" id="modeSelect" onchange="togglePrepaidInput()" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #ccc; background: white; font-size: 1em;">
+                            <option value="OPEN">Открытая сессия (оплата по окончании)</option>
+                            <option value="PREPAID">Предоплата (фиксированное время)</option>
+                        </select>
+                    </div>
+
+                    <div id="prepaidDiv" style="display: none; margin-bottom: 20px;">
+                        <label for="duration" style="display: block; font-weight: bold; margin-bottom: 8px; color: #444;">Продолжительность (в минутах):</label>
+                        <input type="number" name="duration" id="duration" placeholder="e.g. 60" min="1" style="width: 100%; box-sizing: border-box; padding: 12px; border-radius: 8px; border: 1px solid #ccc;">
+                    </div>
+
+                    <button type="submit" style="width: 100%; background: #28a745; color: white; padding: 15px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 1.1em; box-shadow: 0 4px 0 #1e7e34;">
+                        НАЧАТЬ СЕАНС
+                    </button>
+                </form>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+function togglePrepaidInput() {
+    const mode = document.getElementById('modeSelect').value;
+    const div = document.getElementById('prepaidDiv');
+    const input = document.getElementById('duration');
+    
+    if (mode === 'PREPAID') {
+        div.style.display = 'block';
+        input.required = true;
+    } else {
+        div.style.display = 'none';
+        input.required = false;
+        input.value = '';
+    }
+}
+</script>
+{% endblock %}
