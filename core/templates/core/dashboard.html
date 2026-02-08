@@ -2,6 +2,10 @@
 
 {% block content %}
 
+<audio id="expiry-sound" preload="auto">
+    <source src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" type="audio/mpeg">
+</audio>
+
 <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 20px; padding: 20px;">
     {% for item in resources_with_sessions %}
     <div id="resource-card-{{ item.resource.id }}" style="aspect-ratio: 1 / 1; border-radius: 15px; border: 1px solid #eee; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.08); background: white; 
@@ -67,6 +71,19 @@
 </style>
 
 <script>
+    // Set to keep track of which resources have already "buzzed" 
+    // to prevent repeated sounds for the same expiration.
+    const alertedSessions = new Set();
+
+    function playExpirySound() {
+        const sound = document.getElementById('expiry-sound');
+        if (sound) {
+            sound.play().catch(error => {
+                console.log("Audio play blocked. Please interact with the page first.");
+            });
+        }
+    }
+
     function refreshDashboardStatus() {
         fetch("{% url 'core:dashboard_api' %}")
             .then(response => response.json())
@@ -75,51 +92,48 @@
                     const card = document.getElementById(`resource-card-${res.id}`);
                     const statusBox = document.getElementById(`status-box-${res.id}`);
                     const statusText = document.getElementById(`status-text-${res.id}`);
-                    const badge = document.getElementById(`badge-${res.id}`);
-                    const startTime = document.getElementById(`start-time-${res.id}`);
                     
                     if (res.is_overtime) {
-                        // 1. Outer card border and pulse
+                        // --- 1. Sound Logic ---
+                        // If we haven't played a sound for this resource ID yet, play it now
+                        if (!alertedSessions.has(res.id)) {
+                            playExpirySound();
+                            alertedSessions.add(res.id);
+                        }
+
+                        // --- 2. UI Update Logic ---
                         card.style.animation = "pulse-border 1.5s infinite";
                         card.style.border = "2px solid #dc3545";
-                        
-                        // 2. Change bottom block to solid RED
-                        if (statusBox) {
-                            statusBox.style.background = "#dc3545";
-                        }
-                        
-                        // 3. Update text to WHITE and change content
+                        if (statusBox) statusBox.style.background = "#dc3545";
                         if (statusText) {
                             statusText.style.color = "#ffffff";
                             statusText.innerHTML = "⚠️ ВРЕМЯ ИСТЕКЛО";
                         }
-                        
-                        // 4. Ensure badges and labels are white for visibility
-                        if (badge) badge.style.color = "#ffffff";
-                        if (startTime) startTime.style.color = "#ffffff";
+                    } else {
+                        // If session is closed or extended, remove from alerted list 
+                        // so it can ring again if it expires later.
+                        alertedSessions.delete(res.id);
 
-                    } else if (res.is_active) {
-                        // Keep current occupied styles if not overtime
-                        card.style.animation = "none";
-                        card.style.border = "1px solid #eee";
-                        
-                        if (statusBox) {
-                            statusBox.style.background = "#fff5f5";
+                        if (res.is_active) {
+                            card.style.animation = "none";
+                            card.style.border = "1px solid #eee";
+                            if (statusBox) statusBox.style.background = "#fff5f5";
+                            if (statusText) {
+                                statusText.style.color = "#c53030";
+                                statusText.innerHTML = "🔴 ЗАНЯТО";
+                            }
                         }
-                        if (statusText) {
-                            statusText.style.color = "#c53030";
-                            statusText.innerHTML = "🔴 ЗАНЯТО";
-                        }
-                        // Reset badge colors based on mode could be complex here, 
-                        // so we usually just handle the overtime switch.
                     }
                 });
             })
             .catch(err => console.log("Dashboard update failed", err));
     }
 
-    // Checking every 15 seconds keeps it responsive
-    setInterval(refreshDashboardStatus, 60000);
+    // Check every 15 seconds for a more responsive feel
+    setInterval(refreshDashboardStatus, 15000);
+    
+    // Initial run on page load
+    refreshDashboardStatus();
 </script>
 
 {% endblock %}

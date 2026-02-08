@@ -1,0 +1,85 @@
+{% extends "core/base.html" %}
+
+{% block content %}
+<div style="max-width: 500px; margin: 40px auto; font-family: sans-serif;">
+    <div class="report-card" style="background: #f8f9fa; padding: 20px; border-radius: 12px; border: 1px solid #dee2e6;">
+    <h3 style="border-bottom: 2px solid #ddd; padding-bottom: 10px;">Отчет за смену</h3>
+    
+    <div style="display: flex; justify-content: space-between; margin: 10px 0;">
+        <span>Всего продано товаров:</span>
+        <strong>{{ report.items_count }} шт.</strong>
+    </div>
+
+    <div style="display: flex; justify-content: space-between; margin: 10px 0;">
+        <span>Выручка (Бар):</span>
+        <strong>{{ report.bar_revenue }} сом</strong>
+    </div>
+
+    <div style="display: flex; justify-content: space-between; margin: 10px 0;">
+        <span>Выручка (Время/Столы):</span>
+        <strong>{{ report.time_revenue }} сом</strong>
+    </div>
+
+    <hr>
+
+    <div style="display: flex; justify-content: space-between; margin: 10px 0; color: #28a745; font-size: 1.2em;">
+        <span>Чистая прибыль (Бар):</span>
+        <strong>+ {{ report.bar_profit }} сом</strong>
+    </div>
+
+    <div style="display: flex; justify-content: space-between; margin: 10px 0; font-weight: bold; font-size: 1.3em;">
+        <span>ИТОГО КАССА:</span>
+        <span style="color: #007bff;">{{ expected_cash }} сом</span>
+    </div>
+</div>
+    <div style="background: white; padding: 30px; border-radius: 12px; border: 1px solid #eee; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
+        <h2 style="text-align: center; color: #2c3e50; margin-top: 0;">🏁 Закрытие смены</h2>
+        <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px;">
+    <tr>
+        <td style="padding: 10px 0; color: #666;">Начало смены:</td>
+        <td style="padding: 10px 0; text-align: right; font-weight: bold;">{{ shift.start_time|date:"H:i (d.m)" }}</td>
+    </tr>
+    <tr>
+        <td style="padding: 10px 0; color: #666;">Наличных при старте:</td>
+        <td style="padding: 10px 0; text-align: right; font-weight: bold;">{{ shift.start_cash }} сом</td>
+    </tr>
+    <tr>
+        <td style="padding: 10px 0; color: #666;">Выручка за смену:</td>
+        <td style="padding: 10px 0; text-align: right; font-weight: bold; color: #28a745;">+ {{ report.total_revenue }} сом</td>
+    </tr>
+    <tr style="border-top: 2px solid #eee;">
+        <td style="padding: 15px 0; font-weight: bold; font-size: 1.1em;">Итого в кассе (ожидается):</td>
+        <td style="padding: 15px 0; text-align: right; font-weight: bold; font-size: 1.2em; color: #007bff;">
+            {{ expected_cash }} сом
+        </td>
+    </tr>
+</table>
+        
+        <form method="post" action="{% url 'core:close_shift' %}">
+            {% csrf_token %}
+            
+            <div style="margin-bottom: 20px;">
+                <label style="display: block; font-weight: bold; margin-bottom: 8px; color: #444;">
+                    Фактическая сумма в кассе (пересчитайте вручную):
+                </label>
+                <input type="number" name="end_cash" step="0.01" required placeholder="Введите итоговую сумму"
+                       style="width: 100%; padding: 15px; border-radius: 8px; border: 2px solid #007bff; box-sizing: border-box; font-size: 1.2em;">
+            </div>
+
+            <div style="display: flex; gap: 10px;">
+                <a href="{% url 'core:dashboard' %}" 
+                   style="flex: 1; text-align: center; padding: 15px; background: #f8f9fa; color: #666; text-decoration: none; border-radius: 8px; font-weight: bold; border: 1px solid #ddd;">
+                    ОТМЕНА
+                </a>
+                <button type="submit" 
+                        style="flex: 2; padding: 15px; background: #dc3545; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 1em;"
+                        onclick="return confirm('Вы уверены, что хотите закрыть смену?')">
+                    ЗАКРЫТЬ СМЕНУ
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

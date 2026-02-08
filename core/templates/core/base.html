@@ -13,12 +13,32 @@
     </style>
 </head>
 <body>
-    <div class="nav">
+    <div class="nav" style="display: flex; justify-content: space-between; align-items: center;">
+    
+    <div>
+        <a href="{% url 'core:dashboard' %}">🎱 Billiard POS</a>
         {% if user.is_authenticated %}
-            <strong>👤 {{ user.username }}</strong> | 
+            <span>|</span>
             <a href="{% url 'core:dashboard' %}">Панель управления</a>
         {% endif %}
     </div>
+
+    <div>
+        {% if user.is_authenticated %}
+            <div style="display: inline-block; vertical-align: middle; margin-right: 15px;">
+                👤 <strong>{{ user.username }}</strong>
+                <form action="{% url 'logout' %}" method="post" style="display: inline;">
+                    {% csrf_token %}
+                    <button type="submit" >Выйти</button>
+                </form>
+            </div>
+
+            <a href="{% url 'core:close_shift' %}" >
+               🏁 ЗАВЕРШИТЬ СМЕНУ
+            </a>
+        {% endif %}
+    </div>
+</div>
 
     {% if messages %}
         <div class="messages-container">
@@ -29,16 +49,9 @@
             {% endfor %}
         </div>
     {% endif %}
-{% if user.is_authenticated %}
-    <span style="font-size: 0.8em; color: #666;">👤 {{ user.username }} | </span>
-    <form action="{% url 'logout' %}" method="post" style="display: inline;">
-        {% csrf_token %}
-        <button type="submit" style="background: none; border: none; color: #d9534f; cursor: pointer; text-decoration: underline; padding: 0;">Выйти</button>
-    </form>
-{% endif %}
+
     <main>
         {% block content %}{% endblock %}
     </main>
-
 </body>
 </html>

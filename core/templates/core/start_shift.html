@@ -1,0 +1,15 @@
+{% extends "core/base.html" %}
+{% block content %}
+<div style="max-width: 400px; margin: 50px auto; text-align: center;">
+    <h2>🚀 Начало смены</h2>
+    <p>Введите сумму наличных в кассе перед началом работы:</p>
+    <form method="post">
+        {% csrf_token %}
+        <input type="number" name="start_cash" placeholder="0.00 сом" required 
+               style="width: 100%; padding: 15px; font-size: 1.5em; border-radius: 8px; border: 1px solid #ccc; margin-bottom: 20px;">
+        <button type="submit" style="width: 435px; padding: 15px; background: #28a745; color: white; border: none; border-radius: 8px; font-weight: bold;">
+            ОТКРЫТЬ СМЕНУ
+        </button>
+    </form>
+</div>
+{% endblock %}

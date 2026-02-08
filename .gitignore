@@ -24,3 +24,27 @@ Thumbs.db
 # IDEs
 .vscode/
 .idea/
+
+home_ssh
+home_ssh.pub
+
+# Docker
+.dockerignore
+# Ignore the actual data folder if you persist Postgres data to a local volume
+postgres_data/
+
+# Static and Media
+# We ignore the 'staticfiles' folder where 'collectstatic' dumps files
+/staticfiles/
+
+# Logs
+*.log
+logs/
+
+# Windows specifics
+desktop.ini
+$RECYCLE.BIN/
+
+# Documentation/Backups
+*.bak
+*.swp

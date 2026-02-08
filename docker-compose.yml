@@ -1,0 +1,31 @@
+services:
+  db:
+    image: postgres:15
+    container_name: billiard_db_cont
+    restart: always
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=${DATABASE_NAME}
+      - POSTGRES_USER=${DATABASE_USER}
+      - POSTGRES_PASSWORD=${DATABASE_PASSWORD}
+    env_file:
+      - .env
+    
+
+  web:
+    build: .
+    container_name: billiard_web_cont
+    restart: always
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000" 
+    env_file:
+      - .env
+    depends_on:
+      - db
+
+volumes:
+  postgres_data:

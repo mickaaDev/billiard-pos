@@ -1,3 +1,15 @@
+<style>
+    /* Targeting only the minutes input by ID */
+    #extra_minutes::-webkit-outer-spin-button,
+    #extra_minutes::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+
+    #extra_minutes[type=number] {
+        -moz-appearance: textfield;
+    }
+</style>
 {% extends "core/base.html" %}
 
 {% block content %}
@@ -21,12 +33,48 @@
     <span id="live-counter" style="font-family: monospace; font-size: 1.2em; font-weight: bold; color: {% if is_expired %}#d9534f{% else %}#007bff{% endif %};">
         Расчет...
     </span>
+    
     {% if session.mode == 'PREPAID' %}
-        <small style="display:block; color: #666;">Лимит: {{ session.prepaid_minutes }} мин</small>
+        <small style="display:block; color: #666; margin-bottom: 10px;">Лимит: {{ session.prepaid_minutes }} мин</small>
+
+        <div style="margin-top: 15px; padding-top: 10px; border-top: 1px solid rgba(0,0,0,0.1);">
+    <form action="{% url 'core:extend_session' session.pk %}" method="post">
+        {% csrf_token %}
+        <div style="display: flex; gap: 8px; align-items: flex-end;">
+            <div style="flex: 1;">
+                <small style=" display: block; font-size: 0.75em; color: #555; margin-bottom: 4px;">Сумма (сом):</small>
+                <input type="number" id="extend_amount" placeholder="Напр: 200" 
+                       style="width: 90%; padding: 8px; border-radius: 4px; border: 1px solid #ccc; font-size: 0.9em;"
+                       oninput="calculateExtensionTime()">
+            </div>
+            <div style="flex: 1;">
+                <small style="display: block; font-size: 0.75em; color: #555; margin-bottom: 4px;">+ Минуты:</small>
+                <input type="number" name="extra_minutes" id="extra_minutes" placeholder="--" readonly
+                       style="width: 90%; padding: 8px; border-radius: 4px; border: 1px solid #ccc; font-size: 0.9em; background-color: #f0f0f0; color: #555; cursor: not-allowed;">
+            </div>
+            <button type="submit" style="background: #28a745; color: white; border: none; padding: 9px 15px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 0.85em;">
+                ПРОДЛИТЬ
+            </button>
+        </div>
+    </form>
+</div>
     {% endif %}
 </div>
 
 <script>
+    function calculateExtensionTime() {
+    const pricePerHour = parseFloat("{{ session.resource.price_per_hour }}");
+    const amount = parseFloat(document.getElementById('extend_amount').value);
+    const minutesInput = document.getElementById('extra_minutes');
+    
+    if (!isNaN(amount) && amount > 0) {
+        // (Amount / Hourly Price) * 60 minutes
+        let extraMins = (amount / pricePerHour) * 60;
+        minutesInput.value = Math.floor(extraMins);
+    } else {
+        minutesInput.value = '';
+    }
+}
     const startTime = new Date("{{ session.start_time|date:'c' }}");
     const mode = "{{ session.mode }}";
     const prepaidLimitMs = {{ session.prepaid_minutes|default:0 }} * 60 * 1000;
@@ -115,20 +163,31 @@
     {{ time_cost }} сом
 </td>
 
-            {% for item in session.items.all %}
+            {% for item in session_items %}
 <tr style="border-bottom: 1px solid #eee;">
     <td style="padding: 15px;">
         <div style="font-weight: bold; color: #2c3e50;">{{ item.product.name }}</div>
-        <small style="color: #999;">{{ item.price_at_order }} сом  за единицу</small>
+        <small style="color: #999;">{{ item.price_at_order }} сом за единицу</small>
     </td>
     <td style="padding: 15px; text-align: right; font-weight: bold; color: #2c3e50;">
-        <span style="background: #e9ecef; padding: 2px 8px; border-radius: 4px; margin-right: 10px; font-size: 0.9em;">
-            x{{ item.quantity }}
-        </span>
-        ${{ item.total_price }}
+        <div style="display: flex; align-items: center; justify-content: flex-end; gap: 10px;">
+            <span style="background: #e9ecef; padding: 2px 8px; border-radius: 4px; font-size: 0.9em;">
+                x{{ item.quantity }}
+            </span>
+            <span style="margin-right: 10px;">{{ item.total_price }} сом</span>
+            
+            <form action="{% url 'core:remove_item_from_session' item.id %}" method="post" style="margin: 0;">
+                {% csrf_token %}
+                <button type="submit" 
+                        onclick="return confirm('Удалить {{ item.product.name }}?')"
+                        style="background: #ff4d4d; color: white; border: none; border-radius: 4px; width: 24px; height: 24px; cursor: pointer; font-size: 14px; line-height: 1; display: flex; align-items: center; justify-content: center; transition: 0.2s;"
+                        title="Удалить товар">
+                    &times;
+                </button>
+            </form>
+        </div>
     </td>
 </tr>
-
 {% endfor %}
         </tbody>
     </table>
