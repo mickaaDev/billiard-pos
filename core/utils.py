@@ -1,6 +1,7 @@
 from escpos.printer import Network 
 
 def print_receipt_58mm(session, items, grand_total, finish_time, duration_min):
+    raise Exception("DJANGO READS THIS FILE")
     try:
         # Обращаемся к Windows-хосту из Docker
         p = Network('host.docker.internal', port=9100)
