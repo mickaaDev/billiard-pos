@@ -1,3 +1,5 @@
+from escpos.printer import Network 
+
 def print_receipt_58mm(session, items, grand_total, finish_time, duration_min):
     """
     Печать чека на 58мм ленте.
