@@ -226,11 +226,14 @@
         ЗАВЕРШИТЬ И ЗАКРЫТЬ СЕАНС
     </button>
 </form>
-
+    
     <a href="{% url 'core:dashboard' %}" 
        style="flex: 1; height: 50px; line-height: 50px; background: #6c757d; color: white; border-radius: 6px; text-decoration: none; text-align: center; font-weight: bold; font-size: 0.9em; display: inline-block;">
        НА ГЛАВНУЮ
     </a>
+    <a href="{% url 'core:print_session_bill' session.id %}" class="btn btn-secondary">
+    🖨️ Промежуточный чек
+</a>
 
 </div>
     </div>

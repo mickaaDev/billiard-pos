@@ -6,7 +6,43 @@ from django.utils import timezone
 from django.contrib import messages
 from decimal import Decimal
 from django.http import JsonResponse
+from .utils import print_receipt_58mm
 # Create your views here.
+
+
+
+def print_session_bill(request, session_id):
+    session = get_object_or_404(Session, id=session_id)
+    items = session.items.all()
+    
+    # Считаем товары
+    items_total = sum(item.total_price() if callable(item.total_price) else item.total_price for item in items)
+    
+    # Определяем время окончания (текущее или из базы)
+    finish_time = session.end_time if session.end_time else timezone.now()
+    
+    duration_min = 0
+    if session.start_time:
+        duration = finish_time - session.start_time
+        duration_min = int(max(0, duration.total_seconds() / 60))
+        price_per_minute = session.resource.price_per_hour / 60
+        time_cost = Decimal(duration_min) * price_per_minute
+    else:
+        time_cost = Decimal('0')
+
+    grand_total = int(items_total + time_cost)
+    
+    # Передаем всё в функцию печати (добавили duration_min и finish_time)
+    print_receipt_58mm(session, items, grand_total, finish_time, duration_min)
+    
+    # ЛОГИКА РЕДИРЕКТА:
+    if not session.is_active or session.end_time:
+        # Если сессия закрыта, идем на главную (dashboard)
+        return redirect('core:dashboard') 
+    else:
+        # Если сессия еще идет, остаемся в деталях
+        return redirect('core:session_detail', pk=session.id)
+
 
 @login_required
 def dashboard(request):
