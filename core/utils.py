@@ -1,80 +1,55 @@
-from escpos.printer import Network
+import win32print
 import traceback
 
 def print_receipt_58mm(session, items, grand_total, finish_time, duration_min):
-    """
-    Функция печати чека через сетевой мост на Windows.
-    Ожидает, что на Windows запущен RawBT или PowerShell скрипт на порту 9100.
-    """
-    p = None
+    # Укажи точное имя принтера из панели управления Windows
+    printer_name = "xprinter" 
+    
     try:
-        print(f"LOG: Попытка подключения к принтеру host.docker.internal:9100...")
+        # 1. Формируем сырые данные (ESC/POS команды)
+        # \x1b\x40 - инициализация принтера
+        # \x1b\x61\x01 - выравнивание по центру
+        raw_data = b'\x1b\x40' 
+        raw_data += b'\x1b\x61\x01'
+        raw_data += "BILLIARD CLUB\n".encode('cp866')
         
-        # Подключаемся к Windows хосту. Timeout 5 секунд, чтобы не ждать вечно
-        p = Network('host.docker.internal', port=9100, timeout=5)
+        # Разделитель
+        raw_data += b'\x1b\x61\x00' # Выравнивание по левому краю
+        raw_data += ("-" * 32 + "\n").encode('cp866')
         
-        # Настройка кодировки (Xprinter обычно использует CP866 или PC866)
-        try:
-            p.charcode('CP866')
-        except Exception as e:
-            print(f"LOG: Ошибка установки кодировки (пропускаем): {e}")
+        # Данные сессии
+        raw_data += f"Table: {session.resource.name}\n".encode('cp866')
+        raw_data += f"Time:  {duration_min} min\n".encode('cp866')
+        raw_data += ("-" * 32 + "\n").encode('cp866')
 
-        # --- Заголовок чека ---
-        p.set(align='center', bold=True, width=2, height=2)
-        p.text("БИЛЬЯРДНЫЙ КЛУБ\n")
-        
-        p.set(align='center', bold=False, width=1, height=1)
-        if not session.end_time:
-            p.text("--- ПРЕДЧЕК ---\n")
-        
-        p.text(f"Чек N {session.id}\n")
-        p.text("-" * 32 + "\n")
-
-        # --- Детали сессии ---
-        p.set(align='left')
-        p.text(f"Стол:   {session.resource.name}\n")
-        p.text(f"Начало: {session.start_time.strftime('%H:%M (%d.%m)')}\n")
-        if finish_time:
-            p.text(f"Конец:  {finish_time.strftime('%H:%M (%d.%m)')}\n")
-        p.text(f"Время:  {duration_min} мин.\n")
-        p.text("-" * 32 + "\n")
-
-        # --- Товары и услуги ---
+        # Товары
         for item in items:
-            t_price = item.total_price() if callable(item.total_price) else item.total_price
             name = item.product.name[:20]
-            price_str = f"{int(t_price):>10}"
-            p.text(f"{name:<22}{price_str}\n")
-            if item.quantity > 1:
-                p.text(f"  Кол-во: {item.quantity}\n")
+            price = f"{int(item.total_price):>10}"
+            raw_data += f"{name:<22}{price}\n".encode('cp866')
 
-        # --- Итог ---
-        p.text("-" * 32 + "\n")
-        p.set(align='right', bold=True, width=2, height=2)
-        p.text(f"ИТОГО:{grand_total} сом\n")
+        raw_data += ("-" * 32 + "\n").encode('cp866')
+        raw_data += f"TOTAL: {grand_total} SOM\n".encode('cp866')
         
-        # --- Подвал ---
-        p.set(align='center', bold=False, width=1, height=1)
-        p.text("\nБлагодарим за визит!\n")
-        p.text(finish_time.strftime('%d.%m.%Y %H:%M') + "\n")
-        p.text("\n\n\n")
-        
-        # Команда отреза (или прокрутки)
-        p.cut()
-        print("LOG: Данные успешно отправлены на принтер.")
+        # Команды прокрутки и отреза
+        raw_data += b"\n\n\n\n"
+        raw_data += b"\x1d\x56\x01" # Команда отреза (Paper Cut)
+
+        # 2. Отправляем в принтер через Win32 API
+        hPrinter = win32print.OpenPrinter(printer_name)
+        try:
+            # Создаем документ "RAW" (сырые данные)
+            job_info = ("Billiard Receipt", None, "RAW")
+            hJob = win32print.StartDocPrinter(hPrinter, 1, job_info)
+            win32print.StartPagePrinter(hPrinter)
+            win32print.WritePrinter(hPrinter, raw_data)
+            win32print.EndPagePrinter(hPrinter)
+            win32print.EndDocPrinter(hPrinter)
+        finally:
+            win32print.ClosePrinter(hPrinter)
+            
+        print(f"LOG: Receipt sent to {printer_name} successfully.")
 
     except Exception as e:
-        print("--- КРИТИЧЕСКАЯ ОШИБКА ПЕЧАТИ ---")
-        print(f"Тип ошибки: {type(e).__name__}")
-        print(f"Описание: {e}")
-        # Выводит полный путь ошибки, чтобы понять, это таймаут или отказ в соединении
-        traceback.print_exc() 
-        print("---------------------------------")
-    
-    finally:
-        # Пытаемся закрыть соединение, если оно было открыто
-        if p:
-            try:
-                p.close()
-            except:
-                pass
+        print("--- PRINT ERROR ---")
+        traceback.print_exc()
