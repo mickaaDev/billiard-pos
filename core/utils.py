@@ -35,23 +35,23 @@ def print_receipt_58mm(session, items, grand_total, finish_time, duration_min):
         # SESSION INFO (Left Align)
         raw_data += b'\x1b\x61\x00'
         
-        # UPDATED: Safe check for Resource/Table
-        if session.resource:
-            res_type = session.resource.get_type_display()
-            table_display = session.resource.name
+        if session.mode == 'BAR':
+            raw_data += b'\x1b\x45\x01' # Bold ON
+            raw_data += "ТИП:     БАРНЫЙ СЧЕТ\n".encode('cp866')
+            raw_data += b'\x1b\x45\x00' # Bold OFF
+            raw_data += f"Дата:    {current_time_local.strftime('%d.%m %H:%M')}\n".encode('cp866')
+        else:
+            # Table logic (Billiard or Sony)
+            res_type = session.resource.get_type_display() if session.resource else "Общий"
+            res_name = session.resource.name if session.resource else "---"
             
             raw_data += f"Вид:     {res_type}\n".encode('cp866')
-            raw_data += f"Стол:    {table_display}\n".encode('cp866')
+            raw_data += f"Стол:    {res_name}\n".encode('cp866')
             raw_data += f"Начало:  {start_time_local.strftime('%H:%M')}\n".encode('cp866')
             
             if finish_time:
                 raw_data += f"Конец:   {current_time_local.strftime('%H:%M')}\n".encode('cp866')
-            
-            raw_data += f"Время:   {duration_min} мин.\n".encode('cp866')
-        else:
-            # Bar layout
-            raw_data += "ТИП:     БАР / ПРОДАЖА\n".encode('cp866')
-            raw_data += f"Дата:    {current_time_local.strftime('%d.%m %H:%M')}\n".encode('cp866')
+                raw_data += f"Время:   {duration_min} мин.\n".encode('cp866')
 
         raw_data += (("-" * 32) + "\n").encode('cp866')
 

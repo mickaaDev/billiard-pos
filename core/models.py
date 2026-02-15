@@ -54,6 +54,7 @@ class Session(models.Model):
     MODE_CHOICES = [
         ('OPEN', 'Открыть (Оплата в конце)'),
         ('PREPAID', 'Предоплата (фиксированное время)'),
+        ('BAR', 'Счет для бара(без вермени)'),
     ]
 
     resource = models.ForeignKey(
@@ -82,7 +83,8 @@ class Session(models.Model):
 
     def __str__(self):
         res_name = self.resource.name if self.resource else "БАР"
-        return f"{res_name} - {self.pk}"
+        mode_display = self.get_mode_display()
+        return f"{res_name} [{mode_display}] - ID: {self.pk}"
     
     class Meta:
         verbose_name = 'Сессия'
