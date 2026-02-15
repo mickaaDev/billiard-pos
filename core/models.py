@@ -55,7 +55,14 @@ class Session(models.Model):
         ('PREPAID', 'Предоплата (фиксированное время)'),
     ]
 
-    resource = models.ForeignKey(Resource, on_delete=models.CASCADE, related_name='sessions',verbose_name=_("Стол"))
+    resource = models.ForeignKey(
+        Resource, 
+        on_delete=models.CASCADE, 
+        related_name='sessions',
+        verbose_name=_("Стол"),
+        null=True, 
+        blank=True 
+    )
     start_time = models.DateTimeField(auto_now_add=True,verbose_name=_("Начато"))
     end_time = models.DateTimeField(null=True, blank=True,verbose_name=_("Закончено"))
     is_active = models.BooleanField(default=True,verbose_name=_("Активен"))
@@ -73,7 +80,8 @@ class Session(models.Model):
     )
 
     def __str__(self):
-        return f"{self.resource.name} - {self.pk}"
+        res_name = self.resource.name if self.resource else "БАР"
+        return f"{res_name} - {self.pk}"
     
     class Meta:
         verbose_name = 'Сессия'
