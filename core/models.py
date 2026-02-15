@@ -4,6 +4,7 @@ from django.conf import settings
 from django.utils import timezone
 from django.db.models import Sum
 from django.utils.translation import gettext_lazy as _
+from django.core.exceptions import ValidationError
 
 
 class Resource(models.Model):
@@ -165,7 +166,7 @@ class Shift(models.Model):
 
 
     def __str__(self):
-        return f"Смена {self.user.username} ({self.start_time.strftime('%d.%m %H:%i')})"
+        return f"Смена {self.user.username} ({self.start_time.strftime('%d.%m %H:%M')})"
 
     def clean(self):
         # Check if another shift is already active
