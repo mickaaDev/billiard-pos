@@ -11,6 +11,7 @@ class Resource(models.Model):
     RESOURCE_TYPE = (
         ('billiard', 'Бильярд'),
         ('sony', 'Sony'),
+        ('bar', 'Бар'),
     )
 
     name = models.CharField(max_length=50,verbose_name=_("Название"))

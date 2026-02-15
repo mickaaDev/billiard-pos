@@ -37,16 +37,21 @@ def print_receipt_58mm(session, items, grand_total, finish_time, duration_min):
         
         # UPDATED: Safe check for Resource/Table
         if session.resource:
+            res_type = session.resource.get_type_display()
             table_display = session.resource.name
+            
+            raw_data += f"Вид:     {res_type}\n".encode('cp866')
             raw_data += f"Стол:    {table_display}\n".encode('cp866')
             raw_data += f"Начало:  {start_time_local.strftime('%H:%M')}\n".encode('cp866')
+            
             if finish_time:
                 raw_data += f"Конец:   {current_time_local.strftime('%H:%M')}\n".encode('cp866')
+            
             raw_data += f"Время:   {duration_min} мин.\n".encode('cp866')
         else:
-            # Layout for Bar/Quick Sale
-            raw_data += "ТИП:     БАР / ЗАКАЗ\n".encode('cp866')
-            raw_data += f"Время:   {current_time_local.strftime('%H:%M')}\n".encode('cp866')
+            # Bar layout
+            raw_data += "ТИП:     БАР / ПРОДАЖА\n".encode('cp866')
+            raw_data += f"Дата:    {current_time_local.strftime('%d.%m %H:%M')}\n".encode('cp866')
 
         raw_data += (("-" * 32) + "\n").encode('cp866')
 
