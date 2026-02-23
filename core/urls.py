@@ -19,4 +19,5 @@ urlpatterns = [
     path('shift/start/', views.start_shift, name='start_shift'),
     path('shift/close/', views.close_shift, name='close_shift'),
     path('session/<int:session_id>/print/', views.print_session_bill, name='print_session_bill'),
+    path('session/<int:session_id>/pause/', views.toggle_pause, name='toggle_pause'),
 ]

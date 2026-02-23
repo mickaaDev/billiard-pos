@@ -1,257 +1,231 @@
 <style>
-    /* Targeting only the minutes input by ID */
     #extra_minutes::-webkit-outer-spin-button,
     #extra_minutes::-webkit-inner-spin-button {
         -webkit-appearance: none;
         margin: 0;
     }
+    #extra_minutes[type=number] { -moz-appearance: textfield; }
 
-    #extra_minutes[type=number] {
-        -moz-appearance: textfield;
+    .action-btn {
+        height: 50px;
+        border: none;
+        border-radius: 8px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: 0.2s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-decoration: none;
+        font-size: 0.9em;
+    }
+    
+    .btn-close { background: #dc3545; color: #fff; box-shadow: 0 4px 0 #a71d2a; width: 100%; }
+    .btn-close:hover { background: #c82333; transform: translateY(1px); box-shadow: 0 3px 0 #a71d2a; }
+    
+    .btn-print { background: #6c757d; color: white; box-shadow: 0 4px 0 #495057; width: 100%; }
+    .btn-print:hover { background: #5a6268; transform: translateY(1px); box-shadow: 0 3px 0 #495057; }
+
+    @keyframes pulse-yellow {
+        0% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.7); }
+        70% { box-shadow: 0 0 0 10px rgba(255, 193, 7, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0); }
     }
 </style>
+
 {% extends "core/base.html" %}
 
 {% block content %}
 <div style="display: flex; gap: 20px; font-family: sans-serif; max-width: 1000px; margin: auto;">
     
-    <div style="flex: 2; border: 1px solid #ddd; border-radius: 8px; padding: 20px; background: #fff;">
-        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #eee; padding-bottom: 10px;">
-            <h2 style="margin: 0;">Сессия #{{ session.id }}</h2>
-            <span style="background: #d9534f; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.8em;">LIVE</span>
+    <div style="flex: 2; border: 1px solid #ddd; border-radius: 12px; padding: 25px; background: #fff; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
+        
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f4f4f4; padding-bottom: 15px; margin-bottom: 20px;">
+            <h2 style="margin: 0; color: #2c3e50;">{{ session.resource.name }} <small style="color: #7f8c8d; font-size: 0.6em;">#{{ session.id }}</small></h2>
+            <span style="background: #d9534f; color: white; padding: 5px 12px; border-radius: 20px; font-size: 0.75em; font-weight: bold; letter-spacing: 1px;">LIVE</span>
         </div>
 
-        <div style="margin-top: 20px;">
-            <p><strong>Ресурс:</strong> {{ session.resource.name }} ({{ session.resource.price_per_hour }}/час)</p>
-            <p><strong>Начато:</strong> {{ session.start_time|date:"H:i" }}</p>
-            <p><strong>Персонал:</strong> {{ session.created_by.username }}</p>
+        <div id="timer-banner" style="margin-bottom: 25px; padding: 20px; background: {% if is_expired %}#fff5f5{% else %}#f8fafd{% endif %}; border-radius: 12px; border: 1px solid {% if is_expired %}#feb2b2{% else %}#e2e8f0{% endif %}; text-align: center;">
+            <div style="color: #64748b; font-size: 0.85em; text-transform: uppercase; margin-bottom: 5px; font-weight: 600;">
+                {% if session.mode == 'PREPAID' %}Оставшееся время{% else %}Текущая длительность{% endif %}
+            </div>
+            <div id="live-counter" style="font-family: 'Courier New', monospace; font-size: 2.5em; font-weight: bold; color: {% if is_expired %}#e53e3e{% else %}#3182ce{% endif %};">
+                00:00:00
+            </div>
+            
+            {% if session.mode == 'PREPAID' %}
+                <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #e2e8f0;">
+                    <form action="{% url 'core:extend_session' session.pk %}" method="post">
+                        {% csrf_token %}
+                        <div style="display: flex; gap: 10px; align-items: flex-end;">
+                            <div style="flex: 1; text-align: left;">
+                                <label style="font-size: 0.7em; color: #718096; font-weight: bold; margin-left: 5px;">СУММА (СОМ)</label>
+                                <input type="number" id="extend_amount" placeholder="200" oninput="calculateExtensionTime()"
+                                       style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #cbd5e0; outline: none;">
+                            </div>
+                            <div style="flex: 1; text-align: left;">
+                                <label style="font-size: 0.7em; color: #718096; font-weight: bold; margin-left: 5px;">+ МИНУТЫ</label>
+                                <input type="number" name="extra_minutes" id="extra_minutes" readonly
+                                       style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #cbd5e0; background: #edf2f7; color: #4a5568;">
+                            </div>
+                            <button type="submit" style="background: #38a169; color: white; border: none; padding: 11px 20px; border-radius: 6px; font-weight: bold; cursor: pointer;">ПРОДЛИТЬ</button>
+                        </div>
+                    </form>
+                </div>
+            {% endif %}
         </div>
-        <div id="timer-banner" style="margin-bottom: 20px; padding: 15px; background: {% if is_expired %}#f8d7da{% else %}#eef2f7{% endif %}; border-radius: 8px; transition: background 0.5s;">
-    <strong id="timer-label">
-        {% if session.mode == 'PREPAID' %}Оставшееся время:{% else %}Прошедшее время:{% endif %}
-    </strong> 
-    <span id="live-counter" style="font-family: monospace; font-size: 1.2em; font-weight: bold; color: {% if is_expired %}#d9534f{% else %}#007bff{% endif %};">
-        Расчет...
-    </span>
-    
-    {% if session.mode == 'PREPAID' %}
-        <small style="display:block; color: #666; margin-bottom: 10px;">Лимит: {{ session.prepaid_minutes }} мин</small>
 
-        <div style="margin-top: 15px; padding-top: 10px; border-top: 1px solid rgba(0,0,0,0.1);">
-    <form action="{% url 'core:extend_session' session.pk %}" method="post">
-        {% csrf_token %}
-        <div style="display: flex; gap: 8px; align-items: flex-end;">
-            <div style="flex: 1;">
-                <small style=" display: block; font-size: 0.75em; color: #555; margin-bottom: 4px;">Сумма (сом):</small>
-                <input type="number" id="extend_amount" placeholder="Напр: 200" 
-                       style="width: 90%; padding: 8px; border-radius: 4px; border: 1px solid #ccc; font-size: 0.9em;"
-                       oninput="calculateExtensionTime()">
-            </div>
-            <div style="flex: 1;">
-                <small style="display: block; font-size: 0.75em; color: #555; margin-bottom: 4px;">+ Минуты:</small>
-                <input type="number" name="extra_minutes" id="extra_minutes" placeholder="--" readonly
-                       style="width: 90%; padding: 8px; border-radius: 4px; border: 1px solid #ccc; font-size: 0.9em; background-color: #f0f0f0; color: #555; cursor: not-allowed;">
-            </div>
-            <button type="submit" style="background: #28a745; color: white; border: none; padding: 9px 15px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 0.85em;">
-                ПРОДЛИТЬ
-            </button>
+        <div style="border: 1px solid #edf2f7; border-radius: 10px; overflow: hidden; margin-bottom: 20px;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 0.9em;">
+                <thead style="background: #f8fafc; color: #64748b;">
+                    <tr>
+                        <th style="padding: 12px; text-align: left; border-bottom: 1px solid #edf2f7;">Услуга/Товар</th>
+                        <th style="padding: 12px; text-align: right; border-bottom: 1px solid #edf2f7;">Итого</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td style="padding: 12px; border-bottom: 1px solid #edf2f7;">
+                            <strong>Время</strong> <small style="color: #94a3b8;">({{ duration_minutes }} мин)</small>
+                        </td>
+                        <td style="padding: 12px; text-align: right; border-bottom: 1px solid #edf2f7; font-weight: bold;">{{ time_cost }} сом</td>
+                    </tr>
+                    {% for item in session_items %}
+                    <tr>
+                        <td style="padding: 12px; border-bottom: 1px solid #edf2f7;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <form action="{% url 'core:remove_item_from_session' item.id %}" method="post" style="margin: 0;">
+                                    {% csrf_token %}
+                                    <button type="submit" style="background: none; border: none; color: #e53e3e; cursor: pointer; font-size: 1.2em;">&times;</button>
+                                </form>
+                                <span>{{ item.product.name }} <small style="color: #94a3b8;">x{{ item.quantity }}</small></span>
+                            </div>
+                        </td>
+                        <td style="padding: 12px; text-align: right; border-bottom: 1px solid #edf2f7; font-weight: bold;">{{ item.total_price }} сом</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr style="background: #2d3748; color: white;">
+                        <td style="padding: 15px; font-weight: bold; font-size: 1.1em;">ИТОГО К ОПЛАТЕ</td>
+                        <td style="padding: 15px; text-align: right; font-weight: bold; font-size: 1.4em;">{{ grand_total }} сом</td>
+                    </tr>
+                </tfoot>
+            </table>
         </div>
-    </form>
-</div>
-    {% endif %}
+
+        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 12px; margin-bottom: 15px;">
+            <form action="{% url 'core:close_session' session.id %}" method="post" style="margin: 0;">
+                {% csrf_token %}
+                {% if overtime_minutes > 0 %}
+                <div style="background: #fffaf0; border: 1px solid #feebc8; padding: 8px; border-radius: 6px; margin-bottom: 10px; font-size: 0.8em; display: flex; align-items: center; gap: 10px;">
+                    <input type="checkbox" name="charge_overtime" value="true" checked>
+                    <span>Добавить {{ overtime_minutes }} мин переработки</span>
+                </div>
+                {% endif %}
+                <button type="submit" class="action-btn btn-close" onclick="return confirm('Завершить сессию?')">ЗАВЕРШИТЬ СЕАНС</button>
+            </form>
+            <a href="{% url 'core:print_session_bill' session.id %}" class="action-btn btn-print">🖨️ ЧЕК</a>
+        </div>
+        
+        <a href="{% url 'core:dashboard' %}" style="display: block; text-align: center; color: #718096; text-decoration: none; font-size: 0.85em; margin-bottom: 30px;">« Вернуться на главную</a>
+
+        <div style="padding: 15px; border-radius: 12px; border: 1px solid {% if session.is_paused %}#f6e05e{% else %}#e2e8f0{% endif %}; background: {% if session.is_paused %}#fffff0{% else %}#f8fafc{% endif %}; display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="width: 12px; height: 12px; background: {% if session.is_paused %}#f6e05e{% else %}#48bb78{% endif %}; border-radius: 50%; {% if session.is_paused %}animation: pulse-yellow 1.5s infinite;{% endif %}"></div>
+                <div>
+                    <span style="font-size: 0.7em; text-transform: uppercase; color: #a0aec0; display: block; font-weight: bold;">Статус стола</span>
+                    <strong style="color: #2d3748; font-size: 0.9em;">
+                        {% if session.is_paused %}ПАУЗА (Время остановлено){% else %}АКТИВЕН (Идет расчет){% endif %}
+                    </strong>
+                </div>
+            </div>
+            <form action="{% url 'core:toggle_pause' session.id %}" method="POST" style="margin: 0;">
+                {% csrf_token %}
+                <button type="submit" style="background: {% if session.is_paused %}#48bb78{% else %}#ecc94b{% endif %}; color: {% if session.is_paused %}white{% else %}#2d3748{% endif %}; border: none; padding: 8px 16px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 0.8em;">
+                    {% if session.is_paused %}▶ ПРОДОЛЖИТЬ{% else %}⏸ ПАУЗА{% endif %}
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <div style="flex: 1; border: 1px solid #ddd; border-radius: 12px; padding: 20px; background: #f7fafc; height: fit-content;">
+        <h3 style="margin-top: 0; color: #2d3748; font-size: 1.1em; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px;">Меню бара</h3>
+        <div style="display: grid; gap: 10px; max-height: 600px; overflow-y: auto; padding-right: 5px;">
+            {% for p in products %}
+            <form action="{% url 'core:add_item_to_session' session.id %}" method="post" style="margin: 0;">
+                {% csrf_token %}
+                <input type="hidden" name="product_id" value="{{ p.id }}">
+                <button type="submit" style="width: 100%; text-align: left; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; background: white; cursor: pointer; display: flex; justify-content: space-between; align-items: center; transition: 0.2s;">
+                    <span style="font-weight: 500; color: #4a5568;">{{ p.name }}</span>
+                    <strong style="color: #2d3748;">{{ p.price }}</strong>
+                </button>
+            </form>
+            {% endfor %}
+        </div>
+    </div>
 </div>
 
 <script>
     function calculateExtensionTime() {
-    const pricePerHour = parseFloat("{{ session.resource.price_per_hour }}");
-    const amount = parseFloat(document.getElementById('extend_amount').value);
-    const minutesInput = document.getElementById('extra_minutes');
-    
-    if (!isNaN(amount) && amount > 0) {
-        // (Amount / Hourly Price) * 60 minutes
-        let extraMins = (amount / pricePerHour) * 60;
-        minutesInput.value = Math.floor(extraMins);
-    } else {
-        minutesInput.value = '';
+        const pricePerHour = parseFloat("{{ session.resource.price_per_hour }}");
+        const amount = parseFloat(document.getElementById('extend_amount').value);
+        const minutesInput = document.getElementById('extra_minutes');
+        if (!isNaN(amount) && amount > 0) {
+            minutesInput.value = Math.floor((amount / pricePerHour) * 60);
+        } else {
+            minutesInput.value = '';
+        }
     }
-}
-    const startTime = new Date("{{ session.start_time|date:'c' }}");
+
+    // BASE DATA FROM SERVER
+    // This is the total active play time in seconds at the moment the page loaded
+    const playedSecondsAtLoad = parseInt("{{ played_seconds|default:0 }}");
+    const isPaused = "{{ session.is_paused }}" === "True";
     const mode = "{{ session.mode }}";
     const prepaidLimitMs = {{ session.prepaid_minutes|default:0 }} * 60 * 1000;
+    
+    // TRACKER
+    const pageLoadTime = new Date();
 
     function updateCounter() {
-        // ... (your existing updateCounter logic) ...
-        const now = new Date();
-        const elapsedMs = Math.max(0, now - startTime);
-        
+        let totalActiveSeconds;
+
+        if (isPaused) {
+            // If paused, the timer DOES NOT MOVE. 
+            // It stays at exactly what the server calculated.
+            totalActiveSeconds = playedSecondsAtLoad;
+        } else {
+            // If active, take the server's play time and add 
+            // the seconds that have passed while you've been looking at the page.
+            const secondsSincePageLoad = Math.floor((new Date() - pageLoadTime) / 1000);
+            totalActiveSeconds = playedSecondsAtLoad + secondsSincePageLoad;
+        }
+
         let displaySeconds;
         let isOverTime = false;
 
         if (mode === 'PREPAID') {
-            const remainingMs = prepaidLimitMs - elapsedMs;
-            if (remainingMs <= 0) {
-                displaySeconds = Math.floor(Math.abs(remainingMs) / 1000);
-                isOverTime = true;
-            } else {
-                displaySeconds = Math.floor(remainingMs / 1000);
-            }
+            const limitSeconds = prepaidLimitMs / 1000;
+            const remaining = limitSeconds - totalActiveSeconds;
+            isOverTime = remaining <= 0;
+            displaySeconds = Math.floor(Math.abs(remaining));
         } else {
-            displaySeconds = Math.floor(elapsedMs / 1000);
+            displaySeconds = totalActiveSeconds;
         }
 
-        const hours = Math.floor(displaySeconds / 3600);
-        const minutes = Math.floor((displaySeconds % 3600) / 60);
-        const seconds = displaySeconds % 60;
-
-        const display = 
-            (hours < 10 ? "0" + hours : hours) + ":" + 
-            (minutes < 10 ? "0" + minutes : minutes) + ":" + 
-            (seconds < 10 ? "0" + seconds : seconds);
-
-        const counterElement = document.getElementById('live-counter');
-        const banner = document.getElementById('timer-banner');
-        const label = document.getElementById('timer-label');
-
-        if (counterElement) {
-            counterElement.innerText = (isOverTime ? "-" : "") + display;
-            if (isOverTime && mode === 'PREPAID') {
-                banner.style.background = "#f8d7da";
-                counterElement.style.color = "#d9534f";
-                label.innerText = "ВРЕМЯ ИСТЕКЛО:";
-            }
-        }
+        const h = Math.floor(displaySeconds / 3600);
+        const m = Math.floor((displaySeconds % 3600) / 60);
+        const s = displaySeconds % 60;
+        
+        const display = (isOverTime ? "-" : "") + [h, m, s].map(v => v < 10 ? "0"+v : v).join(":");
+        document.getElementById('live-counter').innerText = display;
     }
 
     setInterval(updateCounter, 1000);
     updateCounter();
-
-    // --- ADD THIS PART BELOW ---
-    // Refresh page every 30 seconds to update the money/billing numbers from the server
-    setTimeout(function(){
-       window.location.reload();
-    }, 60000); 
+    
+    // Auto-refresh every 60 seconds to sync money/billing with the server
+    setTimeout(() => window.location.reload(), 60000); 
 </script>
-        <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
-            <tr style="background: #f8f9fa;">
-                <th style="text-align: left; padding: 10px; border-bottom: 2px solid #ddd;">Описание</th>
-                <th style="text-align: right; padding: 10px; border-bottom: 2px solid #ddd;">Общий</th>
-            </tr>
-            <tr>
-                <td style="padding: 10px; border-bottom: 1px solid #eee;">
-    Использование времени (<span id="duration-display">{{ duration_minutes }}</span> минуты)
-</td>
-                <td id="time-cost-1" style="text-align: right; padding: 10px; border-bottom: 1px solid #eee;">
-    {{ time_cost }} сом
-</td>
-            </tr>
-            </table>
-            <div style="background: white; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); overflow: hidden; border: 1px solid #eee;">
-    <table style="width: 100%; border-collapse: collapse; text-align: left;">
-        <thead>
-            <tr style="background: #f8f9fa; border-bottom: 2px solid #eee;">
-                <th style="padding: 15px; color: #666; font-size: 0.85em; text-transform: uppercase;">Описание товара</th>
-                <th style="padding: 15px; color: #666; font-size: 0.85em; text-transform: uppercase; text-align: right;">Количество</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr style="border-bottom: 1px solid #eee;">
-                <td style="padding: 15px;">
-                    <div style="font-weight: bold; color: #2c3e50;">Использование времени</div>
-                    <small style="color: #999;">{{ session.resource.price_per_hour }}/час</small>
-                </td>
-                <td id="time-cost-2" style="padding: 15px; text-align: right; font-weight: bold; color: #2c3e50;">
-    {{ time_cost }} сом
-</td>
-
-            {% for item in session_items %}
-<tr style="border-bottom: 1px solid #eee;">
-    <td style="padding: 15px;">
-        <div style="font-weight: bold; color: #2c3e50;">{{ item.product.name }}</div>
-        <small style="color: #999;">{{ item.price_at_order }} сом за единицу</small>
-    </td>
-    <td style="padding: 15px; text-align: right; font-weight: bold; color: #2c3e50;">
-        <div style="display: flex; align-items: center; justify-content: flex-end; gap: 10px;">
-            <span style="background: #e9ecef; padding: 2px 8px; border-radius: 4px; font-size: 0.9em;">
-                x{{ item.quantity }}
-            </span>
-            <span style="margin-right: 10px;">{{ item.total_price }} сом</span>
-            
-            <form action="{% url 'core:remove_item_from_session' item.id %}" method="post" style="margin: 0;">
-                {% csrf_token %}
-                <button type="submit" 
-                        onclick="return confirm('Удалить {{ item.product.name }}?')"
-                        style="background: #ff4d4d; color: white; border: none; border-radius: 4px; width: 24px; height: 24px; cursor: pointer; font-size: 14px; line-height: 1; display: flex; align-items: center; justify-content: center; transition: 0.2s;"
-                        title="Удалить товар">
-                    &times;
-                </button>
-            </form>
-        </div>
-    </td>
-</tr>
-{% endfor %}
-        </tbody>
-    </table>
-
-    <div style="background: #2c3e50; color: white; padding: 20px; display: flex; justify-content: space-between; align-items: center;">
-        <span style="font-size: 1.1em; text-transform: uppercase; letter-spacing: 1px;">Общий итог</span>
-        <span id="grand-total-display" style="font-size: 1.8em; font-weight: bold;">
-    {{ grand_total }} сом
-</span>
-    </div>
-</div>
-        <div style="text-align: right; margin-top: 20px; font-size: 1.5em; font-weight: bold;">
-            Общий: сом {{ time_cost }}
-        </div>
-
-        <div style="margin-top: 30px; display: flex; align-items: center; gap: 15px;">
-    
-    <form action="{% url 'core:close_session' session.id %}" method="post" style="flex: 2; margin: 0;">
-    {% csrf_token %}
-
-    {% if overtime_minutes > 0 %}
-    <div id="overtime-banner" style="background: #fff3cd; border: 1px solid #ffeeba; padding: 12px; border-radius: 8px; margin-bottom: 12px; display: flex; align-items: center; gap: 12px; border-left: 5px solid #ffc107;">
-        <input type="checkbox" id="charge_overtime" name="charge_overtime" value="true" 
-               style="width: 22px; height: 22px; cursor: pointer; accent-color: #856404;">
-        
-        <label for="charge_overtime" style="font-size: 0.9em; color: #856404; cursor: pointer; line-height: 1.2;">
-            <strong>Добавить переработку?</strong><br>
-            Включить {{ overtime_minutes }} мин. в счет
-        </label>
-    </div>
-    {% endif %}
-
-    <button type="submit" 
-            onclick="return confirm('⚠️ ВЫ УВЕРЕНЫ?\n\nЭто остановит таймер и сформирует итоговый чек.')" 
-            style="height: 50px; width: 100%; background: #dc3545; color: #fff; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 0.9em; transition: 0.2s;">
-        ЗАВЕРШИТЬ И ЗАКРЫТЬ СЕАНС
-    </button>
-</form>
-    
-    <a href="{% url 'core:dashboard' %}" 
-       style="flex: 1; height: 50px; line-height: 50px; background: #6c757d; color: white; border-radius: 6px; text-decoration: none; text-align: center; font-weight: bold; font-size: 0.9em; display: inline-block;">
-       НА ГЛАВНУЮ
-    </a>
-    <a href="{% url 'core:print_session_bill' session.id %}" class="btn btn-secondary">
-    🖨️ Промежуточный чек
-</a>
-
-</div>
-    </div>
-
-    <div style="flex: 1; border: 1px solid #ddd; border-radius: 8px; padding: 20px; background: #f9f9f9;">
-        <h3 style="margin-top: 0;">Добавить с бара</h3>
-        <div style="display: grid; gap: 10px;">
-    {% for p in products %}
-        <form action="{% url 'core:add_item_to_session' session.id %}" method="post" style="margin: 0;">
-            {% csrf_token %}
-            <input type="hidden" name="product_id" value="{{ p.id }}">
-            <button type="submit" style="width: 100%; text-align: left; padding: 10px; border: 1px solid #ccc; border-radius: 4px; background: white; cursor: pointer; display: flex; justify-content: space-between; transition: background 0.2s;">
-                <span>{{ p.name }}</span>
-                <strong>{{ p.price }} сом</strong>
-            </button>
-        </form>
-    {% endfor %}
-</div>
-    </div>
-</div>
 {% endblock %}

@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Resource, Product, Session, Bill, SessionItem, Shift
+from .models import Resource, Product, Session, Bill, SessionItem, Shift, StockMovement
 from django.contrib.auth.models import User
 from django.utils.html import format_html
 from django.db.models import Sum, Count, F
@@ -13,6 +13,24 @@ from decimal import Decimal
 admin.site.site_header = "Панель управления Billiard POS"
 admin.site.site_title = "Billiard POS Админ"
 admin.site.index_title = "Добро пожаловать в систему управления"
+
+
+@admin.register(StockMovement)
+class StockMovementAdmin(admin.ModelAdmin):
+    list_display = ('timestamp', 'product', 'type', 'quantity', 'shift')
+    list_filter = ('type', 'timestamp', 'product')
+    
+    def get_readonly_fields(self, request, obj=None):
+        if obj: # If the object already exists (editing)
+            return [f.name for f in self.model._meta.fields]
+        return self.readonly_fields # Empty when creating a new one
+    def has_delete_permission(self, request, obj=None):
+        # Optional: Disable deletion to prevent staff from hiding mistakes
+        return False
+    def user_display(self, obj):
+        return obj.shift.user.username if obj.shift else "-"
+    user_display.short_description = "Сотрудник"
+
 
 class SessionItemInline(admin.TabularInline):
     model = SessionItem
@@ -173,24 +191,41 @@ class ShiftAdmin(admin.ModelAdmin):
 # 3. Session Admin
 @admin.register(Session)
 class SessionAdmin(admin.ModelAdmin):
-    # 1. Поля в списке (уже есть)
     list_display = ('id', 'resource', 'shift', 'start_time', 'get_table_only_cost', 'is_active', 'created_by')
     
-    # 2. Поля внутри карточки (ДОБАВЛЯЕМ СЮДА)
-    readonly_fields = ('start_time', 'get_table_only_cost', 'get_bar_total_cost') # Добавьте это, если хотите видеть поле внутри
-    
-    # Чтобы поле красиво стояло в форме, можно настроить fields:
-    fields = ('resource', 'shift', 'start_time', 'end_time', 'get_table_only_cost', 'is_active', 'created_by', 'mode', 'prepaid_minutes')
-    def get_bar_total_cost(self, obj):
-        total = sum(item.total_price() for item in obj.items.all())
-        return format_html('<b style="color: #27ae60; font-size: 1.2em;">{:.2f} сом</b>', total)
+    # We define what should be readonly once saved
+    def get_readonly_fields(self, request, obj=None):
+        # Always readonly, even for new sessions
+        base_readonly = ['get_table_only_cost', 'get_bar_total_cost']
+        
+        if obj: # If the session already exists
+            return base_readonly + [
+                'start_time', 
+                'end_time',        # Закончено
+                'resource', 
+                'shift', 
+                'created_by', 
+                'mode',            # Вид
+                'prepaid_minutes'  # Предоплата
+            ]
+        return base_readonly
 
+    fields = (
+        'resource', 'shift', 'start_time', 'end_time', 
+        'get_table_only_cost', 'get_bar_total_cost', # Added Bar total here
+        'is_active', 'created_by', 'mode', 'prepaid_minutes'
+    )
+    def get_bar_total_cost(self, obj):
+        if obj and obj.id:
+            total = sum(item.total_price() for item in obj.items.all())
+            return format_html('<b style="color: #27ae60; font-size: 1.2em;">{:.2f} сом</b>', total)
+        return "0.00 сом"
     get_bar_total_cost.short_description = "Итого по Бару"
+
     list_filter = ('shift', 'is_active', 'mode', 'resource')
     search_fields = ('resource__name', 'created_by__username')
     autocomplete_fields = ['shift'] 
     inlines = [SessionItemInline, BillInline]
-
     def get_table_only_cost(self, obj):
         """Рассчитывает стоимость только за время (без бара)"""
         if obj.is_active:
@@ -217,6 +252,8 @@ class SessionAdmin(admin.ModelAdmin):
         return "0.00 сом"
 
     get_table_only_cost.short_description = "Стоимость времени (Бильярд)"
+
+
 # 4. Bill Admin 
 @admin.register(Bill)
 class BillAdmin(admin.ModelAdmin):
@@ -284,8 +321,11 @@ class ResourceAdmin(admin.ModelAdmin):
 class ProductAdmin(admin.ModelAdmin):
     # Added cost_price to display and editable fields
     list_display = ('name', 'cost_price', 'price', 'stock', 'get_margin') 
-    list_editable = ('cost_price', 'price', 'stock')
-    
+    def get_readonly_fields(self, request, obj=None):
+        if obj: # If the product already exists (editing)
+            # Lock the name and the stock count
+            return ['name', 'stock']
+        return []
     def get_margin(self, obj):
         # Shows profit per item
         margin = obj.price - (obj.cost_price or 0)

@@ -5,7 +5,7 @@ from django.utils import timezone
 from django.db.models import Sum
 from django.utils.translation import gettext_lazy as _
 from django.core.exceptions import ValidationError
-
+from datetime import timedelta
 
 class Resource(models.Model):
     RESOURCE_TYPE = (
@@ -56,7 +56,7 @@ class Session(models.Model):
         ('PREPAID', 'Предоплата (фиксированное время)'),
         ('BAR', 'Счет для бара(без вермени)'),
     ]
-
+    is_paused = models.BooleanField(default=False)
     resource = models.ForeignKey(
         Resource, 
         on_delete=models.CASCADE, 
@@ -86,6 +86,48 @@ class Session(models.Model):
         mode_display = self.get_mode_display()
         return f"{res_name} [{mode_display}] - ID: {self.pk}"
     
+    def get_billable_minutes(self):
+        now = self.end_time if self.end_time else timezone.now()
+        total_mins = (now - self.start_time).total_seconds() / 60
+        
+        pause_discount = 0
+        for pause in self.pauses.filter(resumed_at__isnull=False):
+            # Applying your 10-minute max constraint
+            pause_discount += min(pause.duration_minutes, 10)
+            
+        # If currently paused, calculate current discount too
+        active_pause = self.pauses.filter(resumed_at__isnull=True).first()
+        if active_pause:
+            current_pause_dur = (timezone.now() - active_pause.paused_at).total_seconds() / 60
+            pause_discount += min(current_pause_dur, 10)
+            
+        return max(0, total_mins - pause_discount)
+    
+    
+    def get_total_played_seconds(self):
+        # 1. Total time since the very beginning
+        end = self.end_time if self.end_time else timezone.now()
+        total_elapsed_seconds = (end - self.start_time).total_seconds()
+        
+        # 2. Subtract pause "discounts" (max 10 mins per pause)
+        pause_discount_seconds = 0
+        
+        # Finished pauses
+        for pause in self.pauses.filter(resumed_at__isnull=False):
+            # min(actual_pause, 10 minutes)
+            discount_mins = min(pause.duration_minutes, 10)
+            pause_discount_seconds += (discount_mins * 60)
+            
+        # Active pause (if the button was just clicked)
+        active_pause = self.pauses.filter(resumed_at__isnull=True).first()
+        if active_pause:
+            current_pause_dur = (timezone.now() - active_pause.paused_at).total_seconds() / 60
+            discount_mins = min(current_pause_dur, 10)
+            pause_discount_seconds += (discount_mins * 60)
+            
+        return max(0, total_elapsed_seconds - pause_discount_seconds)
+    
+
     class Meta:
         verbose_name = 'Сессия'
         verbose_name_plural = 'Сессии'
@@ -149,6 +191,26 @@ class SessionItem(models.Model):
         # We add a check: if price_at_order is None, use 0.00
         price = self.price_at_order if self.price_at_order is not None else 0
         return self.quantity * price
+    def save(self, *args, **kwargs):
+        if not self.pk:  # Only runs when the item is first created
+            # 1. Snapshot the price to protect against future price changes
+            if not self.price_at_order:
+                self.price_at_order = self.product.price
+            
+            # 2. Subtract from Product stock
+            if self.product.stock is not None:
+                self.product.stock -= self.quantity
+                self.product.save()
+        
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        # 3. Return items to stock if the order is cancelled/deleted
+        if self.product.stock is not None:
+            self.product.stock += self.quantity
+            self.product.save()
+        
+        super().delete(*args, **kwargs)
 
     class Meta:
         verbose_name = 'Товар сессии'
@@ -226,6 +288,7 @@ class Shift(models.Model):
             'items_count': total_items_sold,
             'bar_cost': bar_cost
         }
+    
     @property
     def discrepancy(self):
         """Calculates if the cash drawer is short or over."""
@@ -233,6 +296,100 @@ class Shift(models.Model):
             expected = self.start_cash + self.total_revenue()
             return self.end_cash - expected
         return 0
+    
+    def get_shift_stock_summary(self):
+        """
+        Returns how many items were sold vs how many were added during this shift.
+        """
+        # Items sold during this shift
+        sales = SessionItem.objects.filter(session__shift=self).values(
+            'product__name'
+        ).annotate(total_sold=Sum('quantity'))
+
+        # Stock movements (deliveries/corrections) during this shift
+        movements = StockMovement.objects.filter(shift=self).values(
+            'product__name', 'type'
+        ).annotate(total_change=Sum('quantity'))
+
+        return {
+            'sales': sales,
+            'movements': movements
+        }
+
     class Meta:
         verbose_name = 'Смена'
         verbose_name_plural = 'Смены'
+
+
+class StockMovement(models.Model):
+    MOVEMENT_TYPE = (
+        ('addition', 'Приход (Доставка)'),
+        ('correction', 'Коррекция (Инвентаризация)'),
+        ('waste', 'Списание (Брак/Разлив)'),
+    )
+
+    product = models.ForeignKey(
+        Product, 
+        on_delete=models.CASCADE, 
+        related_name='movements',
+        verbose_name=_("Товар")
+    )
+    shift = models.ForeignKey(
+        Shift, 
+        on_delete=models.CASCADE, 
+        related_name='stock_movements',
+        verbose_name=_("Смена")
+    )
+    quantity = models.IntegerField(verbose_name=_("Количество"))
+    type = models.CharField(
+        max_length=20, 
+        choices=MOVEMENT_TYPE, 
+        verbose_name=_("Тип движения")
+    )
+    comment = models.CharField(
+        max_length=255, 
+        blank=True, 
+        null=True, 
+        verbose_name=_("Комментарий")
+    )
+    timestamp = models.DateTimeField(
+        auto_now_add=True, 
+        verbose_name=_("Дата и время")
+    )
+
+    def save(self, *args, **kwargs):
+        if not self.pk:
+            # Ensure quantity is positive for logic consistency
+            qty = abs(self.quantity) 
+            
+            if self.type == 'addition':
+                self.product.stock = (self.product.stock or 0) + qty
+            elif self.type == 'waste':
+                self.product.stock = (self.product.stock or 0) - qty
+            elif self.type == 'correction':
+                # Overwrites the stock with the actual counted amount
+                self.product.stock = self.quantity 
+            
+            self.product.save()
+        super().save(*args, **kwargs)
+
+    class Meta:
+        verbose_name = _("Движение товара")
+        verbose_name_plural = _("Движения товаров")
+        ordering = ['-timestamp']
+
+class SessionPause(models.Model):
+    session = models.ForeignKey(Session, on_delete=models.CASCADE, related_name='pauses')
+    paused_at = models.DateTimeField(auto_now_add=True)
+    resumed_at = models.DateTimeField(null=True, blank=True)
+
+    @property
+    def duration_minutes(self):
+        if self.resumed_at:
+            diff = self.resumed_at - self.paused_at
+            return diff.total_seconds() / 60
+        return 0
+
+    class Meta:
+        verbose_name = "Пауза сессии"
+        verbose_name_plural = "Паузы сессий"

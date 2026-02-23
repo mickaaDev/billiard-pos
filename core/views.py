@@ -1,5 +1,5 @@
 from django.shortcuts import render, get_object_or_404, redirect
-from .models import Resource, Product, Session, SessionItem, Bill, Shift
+from .models import Resource, Product, Session, SessionItem, Bill, Shift, SessionPause
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_POST
 from django.utils import timezone 
@@ -88,7 +88,7 @@ def start_session(request, resource_id):
         if not active_shift:
             messages.error(request, "Нельзя открыть стол без открытой смены!")
             return redirect('core:start_shift')
-        # Check if table is already busy
+
         if Session.objects.filter(resource=resource, is_active=True).exists():
             messages.error(request, "This resource already has an active session.")
             return redirect('core:dashboard')
@@ -182,42 +182,37 @@ def session_detail(request, pk):
     session = get_object_or_404(Session, pk=pk)
     now = timezone.now()
     
-    # 1. Calculate Exact Time
-    diff = now - session.start_time
-    total_seconds = diff.total_seconds()
-    # Use float/decimal for minutes to avoid the "0" problem
-    duration_minutes_float = total_seconds / 60
-    # For display as an integer
-    duration_minutes_display = int(duration_minutes_float)
+    # 1. Use our new model method to get billable minutes (includes pause logic)
+    billable_minutes_float = session.get_billable_minutes()
+    duration_minutes_display = int(billable_minutes_float)
     
     price_per_hour = Decimal(str(session.resource.price_per_hour))
     price_per_minute = price_per_hour / Decimal(60)
-
-    # 2. Determine Billable Time & Cost
+    played_seconds = session.get_total_played_seconds() # Assuming you have this method
+    # 2. Determine Cost based on Mode
     if session.mode == 'PREPAID' and session.prepaid_minutes:
-        # Prepaid stays fixed at the bought amount
         billable_minutes = Decimal(session.prepaid_minutes)
-        
+        # For prepaid, overtime starts after (prepaid_mins + pause_credit)
+        # But usually, clubs just stop the clock. Let's keep it simple:
         limit_time = session.start_time + timezone.timedelta(minutes=session.prepaid_minutes)
         remaining_seconds = max(0, (limit_time - now).total_seconds())
         is_expired = now >= limit_time
         overtime_minutes = max(0, duration_minutes_display - session.prepaid_minutes)
     else:
-        # OPEN SESSION: Calculate real-time cost
-        # We use the float here so even 30 seconds shows a small cost
-        billable_minutes = Decimal(duration_minutes_float)
+        billable_minutes = Decimal(billable_minutes_float)
         remaining_seconds = 0
         is_expired = False
         overtime_minutes = 0
 
-    # 3. Final Calculations
     time_cost = billable_minutes * price_per_minute
-    session_items = session.items.all().order_by('id') # Force stable order
+    session_items = session.items.all().order_by('id')
     product_total = sum(item.total_price() for item in session_items)
     grand_total = time_cost + Decimal(product_total)
 
-    products = Product.objects.all().order_by('name')
-
+    # To show the countdown/timer for the current pause in HTML
+    active_pause = session.pauses.filter(resumed_at__isnull=True).first()
+    if not session.is_active:
+        return redirect('core:bill_summary', pk=session.pk)
     return render(request, "core/session_detail.html", {
         "session": session,
         "session_items": session_items,
@@ -225,10 +220,12 @@ def session_detail(request, pk):
         "time_cost": round(time_cost, 2),
         "product_total": round(product_total, 2),
         "grand_total": round(grand_total, 2),
-        "products": products,
+        "products": Product.objects.all().order_by('name'),
         "remaining_seconds": int(remaining_seconds),
         "is_expired": is_expired,
-        "overtime_minutes": overtime_minutes
+        "overtime_minutes": overtime_minutes,
+        "active_pause": active_pause,  # New: Pass this to show "Time on pause"
+        'played_seconds': played_seconds
     })
 
 @login_required
@@ -236,18 +233,21 @@ def bill_summary(request, pk):
     session = get_object_or_404(Session, pk=pk)
     bill = get_object_or_404(Bill, session=session)
     
-    duration = session.end_time - session.start_time
-    duration_minutes = int(duration.total_seconds() / 60)
+    # Calculate products based on existing items
+    session_items = session.items.all()
+    product_total = sum(item.total_price() for item in session_items)
     
-    product_total = sum(item.total_price() for item in session.items.all())
-    
+    # Time cost is whatever is left in the total bill
     time_cost = bill.total_amount - Decimal(product_total)
+    
+    # Billable minutes for display
+    duration_minutes = session.get_billable_minutes()
 
     return render(request, "core/bill_summary.html", {
         "session": session,
-        "duration_minutes": duration_minutes, 
+        "duration_minutes": int(duration_minutes), 
         "time_cost": round(time_cost, 2),
-        "product_total": round(product_total, 2),
+        "session_items": session_items,
         "grand_total": bill.total_amount,
     })
 
@@ -255,35 +255,36 @@ def bill_summary(request, pk):
 @login_required
 def close_session(request, pk):
     session = get_object_or_404(Session, pk=pk)
-    session.end_time = timezone.now()
-    session.is_active = False
-    session.save()
-
-    duration = session.end_time - session.start_time
-    actual_minutes = int(duration.total_seconds() / 60)
     
-    if session.mode == 'PREPAID':
-        charge_overtime = request.POST.get('charge_overtime') == 'true'
-        
-        if charge_overtime:
-            billable_minutes = actual_minutes
-        else:
-            billable_minutes = session.prepaid_minutes
-    else:
-        billable_minutes = actual_minutes
+    if session.is_active:
+        # 1. Handle Pauses
+        active_pause = session.pauses.filter(resumed_at__isnull=True).last()
+        if active_pause:
+            active_pause.resumed_at = timezone.now()
+            active_pause.save()
 
-    price_per_minute = Decimal(str(session.resource.price_per_hour)) / Decimal(60)
-    time_cost = Decimal(billable_minutes) * price_per_minute
-    
-    product_total = sum(item.total_price() for item in session.items.all())
-    final_total = time_cost + Decimal(product_total)
+        # 2. Fix the End Time (Stop the clock)
+        session.end_time = timezone.now()
+        session.is_active = False # Mark as finished
+        session.save()
 
-    # 4. Save the Bill record
-    Bill.objects.create(
-        session=session,
-        total_amount=round(final_total, 2)
-    )
+        # 3. Calculate Final Billable Data
+        billable_minutes = session.get_billable_minutes()
+        if session.mode == 'PREPAID' and request.POST.get('charge_overtime') != 'true':
+            billable_minutes = Decimal(session.prepaid_minutes)
 
+        price_per_min = Decimal(str(session.resource.price_per_hour)) / Decimal(60)
+        time_cost = Decimal(billable_minutes) * price_per_min
+        product_total = sum(item.total_price() for item in session.items.all())
+        final_total = time_cost + Decimal(product_total)
+
+        # 4. Create or Update the Bill
+        Bill.objects.update_or_create(
+            session=session,
+            defaults={'total_amount': round(final_total, 2)}
+        )
+
+    # Redirect to summary
     return redirect('core:bill_summary', pk=session.pk)
 
 @require_POST
@@ -384,3 +385,22 @@ def close_shift(request):
         'report': report,
         'expected_cash': expected_cash
     })
+
+@login_required
+def toggle_pause(request, session_id):
+    session = get_object_or_404(Session, id=session_id, is_active=True)
+    
+    if not session.is_paused:
+        # Pause the session
+        session.is_paused = True
+        SessionPause.objects.create(session=session)
+    else:
+        # Resume the session
+        session.is_paused = False
+        pause = session.pauses.filter(resumed_at__isnull=True).last()
+        if pause:
+            pause.resumed_at = timezone.now()
+            pause.save()
+            
+    session.save()
+    return redirect('core:session_detail', pk=session.id)
