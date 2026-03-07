@@ -190,6 +190,16 @@ def session_detail(request, pk):
     price_per_minute = price_per_hour / Decimal(60)
     played_seconds = session.get_total_played_seconds() # Assuming you have this method
     # 2. Determine Cost based on Mode
+    active_pause = session.pauses.filter(resumed_at__isnull=True).first()
+    if active_pause:
+        pause_duration = (now - active_pause.paused_at).total_seconds() / 60
+        if pause_duration > 5:
+            active_pause.resumed_at = active_pause.paused_at + timezone.timedelta(minutes=5)
+            active_pause.save()
+            session.is_paused = False
+            session.save()
+            messages.info(request, "Пауза превысила 5 минут и была автоматически завершена.")
+
     if session.mode == 'PREPAID' and session.prepaid_minutes:
         billable_minutes = Decimal(session.prepaid_minutes)
         # For prepaid, overtime starts after (prepaid_mins + pause_credit)
@@ -210,7 +220,7 @@ def session_detail(request, pk):
     grand_total = time_cost + Decimal(product_total)
 
     # To show the countdown/timer for the current pause in HTML
-    active_pause = session.pauses.filter(resumed_at__isnull=True).first()
+    
     if not session.is_active:
         return redirect('core:bill_summary', pk=session.pk)
     return render(request, "core/session_detail.html", {

@@ -74,7 +74,15 @@
                 </div>
             {% endif %}
         </div>
+            {% if active_pause %}
+<div id="pause-timer-container" class="alert alert-warning">
+    <strong>Стол приостановлена</strong><br>
+    Время на паузе: <span id="pause-duration">00:00</span> / 05:00<br>
+    <small class="text-danger">Оплачиваемое рабочее время возобновится через: <span id="pause-remaining">05:00</span></small>
+</div>
 
+<input type="hidden" id="paused-at-iso" value="{{ active_pause.paused_at|date:'c' }}">
+{% endif %}
         <div style="border: 1px solid #edf2f7; border-radius: 10px; overflow: hidden; margin-bottom: 20px;">
             <table style="width: 100%; border-collapse: collapse; font-size: 0.9em;">
                 <thead style="background: #f8fafc; color: #64748b;">
@@ -221,9 +229,48 @@
         const display = (isOverTime ? "-" : "") + [h, m, s].map(v => v < 10 ? "0"+v : v).join(":");
         document.getElementById('live-counter').innerText = display;
     }
+    function updatePauseTimer() {
+        const pausedAtStr = document.getElementById('paused-at-iso')?.value;
+        if (!pausedAtStr) return;
 
-    setInterval(updateCounter, 1000);
+        const pausedAt = new Date(pausedAtStr);
+        const now = new Date();
+        const diffSeconds = Math.floor((now - pausedAt) / 1000);
+        const limitSeconds = 5 * 60; // 5 minute hard limit
+
+        // 1. Update the "Time on pause" display (capped at 5:00)
+        let durationSec = Math.min(diffSeconds, limitSeconds);
+        const durMin = String(Math.floor(durationSec / 60)).padStart(2, '0');
+        const durSec = String(durationSec % 60).padStart(2, '0');
+        const pauseDurElem = document.getElementById('pause-duration');
+        if (pauseDurElem) pauseDurElem.innerText = `${durMin}:${durSec}`;
+
+        // 2. Update the "Remaining" countdown
+        let remainingSec = limitSeconds - diffSeconds;
+        const pauseRemElem = document.getElementById('pause-remaining');
+        
+        if (pauseRemElem) {
+            if (remainingSec <= 0) {
+                pauseRemElem.innerText = "00:00 - BILLING RESUMED";
+                pauseRemElem.classList.remove('text-danger');
+                pauseRemElem.style.color = 'black';
+                pauseRemElem.style.fontWeight = 'bold';
+                
+                // Force refresh after a small buffer to sync the 'is_paused' state with server
+                if (remainingSec === -2) window.location.reload(); 
+            } else {
+                const remMin = String(Math.floor(remainingSec / 60)).padStart(2, '0');
+                const remSec = String(remainingSec % 60).padStart(2, '0');
+                pauseRemElem.innerText = `${remMin}:${remSec}`;
+            }
+        }
+    }
+    setInterval(() => {
+        updateCounter();
+        updatePauseTimer();
+    }, 1000);
     updateCounter();
+    updatePauseTimer();
     
     // Auto-refresh every 60 seconds to sync money/billing with the server
     setTimeout(() => window.location.reload(), 60000); 

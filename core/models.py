@@ -91,15 +91,21 @@ class Session(models.Model):
         total_mins = (now - self.start_time).total_seconds() / 60
         
         pause_discount = 0
+        # The limit you requested: 5 minutes
+        PAUSE_LIMIT = 5 
+
+        # 1. Finished pauses
         for pause in self.pauses.filter(resumed_at__isnull=False):
-            # Applying your 10-minute max constraint
-            pause_discount += min(pause.duration_minutes, 10)
+            # min(actual duration, 5 mins)
+            pause_discount += min(pause.duration_minutes, PAUSE_LIMIT)
             
-        # If currently paused, calculate current discount too
+        # 2. Currently active pause
         active_pause = self.pauses.filter(resumed_at__isnull=True).first()
         if active_pause:
             current_pause_dur = (timezone.now() - active_pause.paused_at).total_seconds() / 60
-            pause_discount += min(current_pause_dur, 10)
+            # Even if they are still 'paused' in the UI, 
+            # we only give them a discount of max 5 mins.
+            pause_discount += min(current_pause_dur, PAUSE_LIMIT)
             
         return max(0, total_mins - pause_discount)
     
