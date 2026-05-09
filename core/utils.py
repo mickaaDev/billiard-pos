@@ -1,7 +1,7 @@
-import win32print
+# import win32print
+# import pytz 
 import traceback
 from datetime import datetime
-import pytz 
 from decimal import Decimal
 
 def print_receipt_58mm(session, items, grand_total, finish_time, duration_min):
@@ -56,30 +56,37 @@ def print_receipt_58mm(session, items, grand_total, finish_time, duration_min):
         
         # SESSION INFO (Left Align)
         raw_data += b'\x1b\x61\x00'
-        
+        start_str = start_time_local.strftime('%H:%M')
+        if finish_time:
+            # Ensure finish_time is bishkek local
+            try:
+                if finish_time.tzinfo is None:
+                    finish_time = pytz.utc.localize(finish_time).astimezone(bishkek_tz)
+                else:
+                    finish_time = finish_time.astimezone(bishkek_tz)
+                end_str = finish_time.strftime('%H:%M')
+            except:
+                end_str = current_time_local.strftime('%H:%M')
+        else:
+            end_str = "---"
+
         if session.mode == 'BAR':
             raw_data += b'\x1b\x45\x01' # Bold ON
             raw_data += "ТИП:     БАРНЫЙ СЧЕТ\n".encode('cp866')
             raw_data += b'\x1b\x45\x00' # Bold OFF
             raw_data += f"Дата:    {current_time_local.strftime('%d.%m %H:%M')}\n".encode('cp866')
         else:
-            res_type = session.resource.get_type_display() if session.resource else "Общий"
             res_name = session.resource.name if session.resource else "---"
             
-            raw_data += f"Вид:     {res_type}\n".encode('cp866')
             raw_data += f"Стол:    {res_name}\n".encode('cp866')
-            raw_data += f"Начало:  {start_time_local.strftime('%H:%M')}\n".encode('cp866')
+            raw_data += f"Начало:  {start_str}\n".encode('cp866')
+            raw_data += f"Конец:   {end_str}\n".encode('cp866') # Explicit End Time
             
-            if finish_time:
-                raw_data += f"Конец:   {current_time_local.strftime('%H:%M')}\n".encode('cp866')
-                
-                # Show pause info if it exists
-                if total_pause_mins > 0:
-                    raw_data += f"Пауза:   {int(total_pause_mins)} мин.\n".encode('cp866')
-                
-                raw_data += f"Итого:   {duration_min} мин. игр\n".encode('cp866')
-
-        raw_data += (("-" * 30) + "\n").encode('cp866')
+            # Show pause info if it exists
+            if total_pause_mins > 0:
+                raw_data += f"Пауза:   {int(total_pause_mins)} мин. (скидка)\n".encode('cp866')
+            
+            raw_data += f"Чистое время: {duration_min} мин.\n".encode('cp866')
 
         # ITEMS TABLE (Products/Drinks)
         for item in items:
