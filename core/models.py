@@ -42,6 +42,18 @@ class Product(models.Model):
     @property
     def margin(self):
         return self.price - self.cost_price
+    
+    def total_item_sales_value(self):
+        """Total money if you sell all current stock (Stock * Price)"""
+        return (self.stock or 0) * self.price
+
+    def total_item_cost_value(self):
+        """Total money spent to buy current stock (Stock * Cost Price)"""
+        return (self.stock or 0) * (self.cost_price or 0)
+
+    # These let you show the values in the Admin list
+    total_item_sales_value.short_description = _("Сумма продажи")
+    total_item_cost_value.short_description = _("Сумма закупа")
 
     class Meta:
         verbose_name = 'Товар'

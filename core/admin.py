@@ -1,9 +1,11 @@
-from django.contrib import admin
+import math
+from django.contrib import admin, messages
 from .models import Resource, Product, Session, Bill, SessionItem, Shift, StockMovement
 from django.contrib.auth.models import User
 from django.utils.html import format_html
 from django.db.models import Sum, Count, F
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 from django.utils.safestring import mark_safe
 from django.utils.formats import date_format
 from decimal import Decimal
@@ -319,15 +321,72 @@ class ResourceAdmin(admin.ModelAdmin):
 
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
-    # Added cost_price to display and editable fields
-    list_display = ('name', 'cost_price', 'price', 'stock', 'get_margin') 
+    # Displaying all key metrics in the table rows
+    list_display = (
+        'name', 
+        'cost_price', 
+        'price', 
+        'stock', 
+        'get_margin', 
+        'get_total_cost_value', 
+        'get_total_sales_value'
+    )
+    
     def get_readonly_fields(self, request, obj=None):
-        if obj: # If the product already exists (editing)
-            # Lock the name and the stock count
+        if obj: # Lock name and stock for existing products
             return ['name', 'stock']
         return []
+
+    # --- Individual Row Calculations ---
+
     def get_margin(self, obj):
-        # Shows profit per item
         margin = obj.price - (obj.cost_price or 0)
         return f"{margin} сом"
     get_margin.short_description = "Наценка"
+
+    def get_total_cost_value(self, obj):
+        # Total capital invested in this product
+        total = (obj.stock or 0) * (obj.cost_price or 0)
+        return f"{int(total)} сом"
+    get_total_cost_value.short_description = "Итого (Закуп)"
+
+    def get_total_sales_value(self, obj):
+        # Potential revenue from this product
+        total = (obj.stock or 0) * obj.price
+        return f"{int(total)} сом"
+    get_total_sales_value.short_description = "Итого (Продажа)"
+
+    # --- The "Grand Total" logic ---
+
+    def changelist_view(self, request, extra_context=None):
+        # 1. Calculate the totals for the entire inventory
+        totals = Product.objects.aggregate(
+            all_bar_cost=Sum(F('stock') * F('cost_price')),
+            all_bar_sales=Sum(F('stock') * F('price'))
+        )
+
+        cost_total = math.ceil(totals['all_bar_cost'] or 0)
+        sales_total = math.ceil(totals['all_bar_sales'] or 0)
+        profit_total = sales_total - cost_total
+
+        # 2. Inject a custom message at the top of the admin page
+        # This bypasses the need for custom HTML files
+        summary_message = format_html(
+            "📊 <b>ОТЧЕТ ПО СКЛАДУ:</b> "
+            "Вложено (Закуп): <span style='color: #d9534f; font-weight: bold;'>{} сом</span> | "
+            "Выручка (Продажа): <span style='color: #5cb85c; font-weight: bold;'>{} сом</span> | "
+            "Потенциальная прибыль: <span style='color: #0275d8; font-weight: bold;'>{} сом</span>",
+            cost_total, sales_total, profit_total
+        )
+        
+        # We clear existing messages to prevent duplicates on refresh
+        storage = messages.get_messages(request)
+        for _ in storage: pass 
+        
+        messages.info(request, summary_message)
+
+        # 3. We still pass it to extra_context just in case you fix the template later
+        extra_context = extra_context or {}
+        extra_context['summary_text'] = summary_message
+        
+        return super().changelist_view(request, extra_context=extra_context)

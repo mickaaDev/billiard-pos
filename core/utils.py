@@ -1,5 +1,5 @@
-# import win32print
-# import pytz 
+import win32print
+import pytz 
 import traceback
 from datetime import datetime
 from decimal import Decimal
@@ -96,7 +96,7 @@ def print_receipt_58mm(session, items, grand_total, finish_time, duration_min):
             name = item.product.name[:16]
             
             item_line_left = f"{name} x{quantity}"
-            price_str = f"{int(t_price):>10}"
+            price_str = f"{round(t_price):>10}"
             raw_data += f"{item_line_left:<20}{price_str}\n".encode('cp866')
 
         raw_data += (("-" * 30) + "\n").encode('cp866')
