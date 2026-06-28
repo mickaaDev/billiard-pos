@@ -10,30 +10,40 @@ from django.utils.safestring import mark_safe
 from django.utils.formats import date_format
 from decimal import Decimal
 
-
-
 admin.site.site_header = "Панель управления Billiard POS"
 admin.site.site_title = "Billiard POS Админ"
 admin.site.index_title = "Добро пожаловать в систему управления"
 
-
+# 1. Stock Movement Admin
 @admin.register(StockMovement)
 class StockMovementAdmin(admin.ModelAdmin):
-    list_display = ('timestamp', 'product', 'type', 'quantity', 'shift')
+    # FIXED: Replaced 'timestamp' with 'get_local_timestamp' to apply the timezone conversion
+    list_display = ('get_local_timestamp', 'product', 'type', 'quantity', 'shift')
     list_filter = ('type', 'timestamp', 'product')
     
+    def get_local_timestamp(self, obj):
+        if obj.timestamp:
+            # Explicitly force conversion from database UTC storage to Asia/Bishkek time
+            local_time = timezone.localtime(obj.timestamp)
+            return date_format(local_time, format="d E Y г. H:i", use_l10n=True)
+        return "-"
+    get_local_timestamp.short_description = "Дата и время"
+    get_local_timestamp.admin_order_field = 'timestamp'
+
     def get_readonly_fields(self, request, obj=None):
-        if obj: # If the object already exists (editing)
+        if obj: 
             return [f.name for f in self.model._meta.fields]
-        return self.readonly_fields # Empty when creating a new one
+        return self.readonly_fields 
+
     def has_delete_permission(self, request, obj=None):
-        # Optional: Disable deletion to prevent staff from hiding mistakes
         return False
+
     def user_display(self, obj):
         return obj.shift.user.username if obj.shift else "-"
     user_display.short_description = "Сотрудник"
 
 
+# Inlines
 class SessionItemInline(admin.TabularInline):
     model = SessionItem
     extra = 0
@@ -49,6 +59,8 @@ class BillInline(admin.StackedInline):
     extra = 0
     can_delete = False
 
+
+# 2. Shift Admin
 @admin.register(Shift)
 class ShiftAdmin(admin.ModelAdmin):
     search_fields = ['user__username', 'start_time']
@@ -65,14 +77,15 @@ class ShiftAdmin(admin.ModelAdmin):
     list_display_links = ('id', 'get_shift_date')
     readonly_fields = ('start_time', 'end_time', 'get_full_report')
 
-
     def get_shift_date(self, obj):
         if obj.start_time:
-            # Используем формат Django для красивой даты на русском
-            return date_format(obj.start_time, format="d E Y (H:i)", use_l10n=True)
+            # FIXED: Forces time conversion into Asia/Bishkek before date_format processing
+            local_time = timezone.localtime(obj.start_time)
+            return date_format(local_time, format="d E Y (H:i)", use_l10n=True)
         return "Неизвестно"
     
     get_shift_date.short_description = "Дата/Время начала"
+    get_shift_date.admin_order_field = 'start_time'
 
     def get_discrepancy(self, obj):
         val = obj.discrepancy
@@ -89,7 +102,6 @@ class ShiftAdmin(admin.ModelAdmin):
         if not obj.start_time:
             return "Нет данных"
 
-        from django.utils import timezone
         report = obj.get_shift_report()
         end = obj.end_time if obj.end_time else timezone.now()
         
@@ -189,34 +201,33 @@ class ShiftAdmin(admin.ModelAdmin):
         </div>
         """
         return mark_safe(html_content)
+    get_full_report.short_description = "Аналитический отчет"
+
 
 # 3. Session Admin
 @admin.register(Session)
 class SessionAdmin(admin.ModelAdmin):
-    list_display = ('id', 'resource', 'shift', 'start_time', 'get_table_only_cost', 'is_active', 'created_by')
+    list_display = ('id', 'resource', 'shift', 'get_local_start_time', 'get_table_only_cost', 'is_active', 'created_by')
     
-    # We define what should be readonly once saved
+    def get_local_start_time(self, obj):
+        if obj.start_time:
+            return date_format(timezone.localtime(obj.start_time), format="H:i (d.m)", use_l10n=True)
+        return "-"
+    get_local_start_time.short_description = "Время начала"
+    get_local_start_time.admin_order_field = 'start_time'
+
     def get_readonly_fields(self, request, obj=None):
-        # Always readonly, even for new sessions
         base_readonly = ['get_table_only_cost', 'get_bar_total_cost']
-        
-        if obj: # If the session already exists
-            return base_readonly + [
-                'start_time', 
-                'end_time',        # Закончено
-                'resource', 
-                'shift', 
-                'created_by', 
-                'mode',            # Вид
-                'prepaid_minutes'  # Предоплата
-            ]
+        if obj:
+            return base_readonly + ['start_time', 'end_time', 'resource', 'shift', 'created_by', 'mode', 'prepaid_minutes']
         return base_readonly
 
     fields = (
         'resource', 'shift', 'start_time', 'end_time', 
-        'get_table_only_cost', 'get_bar_total_cost', # Added Bar total here
+        'get_table_only_cost', 'get_bar_total_cost', 
         'is_active', 'created_by', 'mode', 'prepaid_minutes'
     )
+    
     def get_bar_total_cost(self, obj):
         if obj and obj.id:
             total = sum(item.total_price() for item in obj.items.all())
@@ -228,41 +239,31 @@ class SessionAdmin(admin.ModelAdmin):
     search_fields = ('resource__name', 'created_by__username')
     autocomplete_fields = ['shift'] 
     inlines = [SessionItemInline, BillInline]
+
     def get_table_only_cost(self, obj):
-        """Рассчитывает стоимость только за время (без бара)"""
         if obj.is_active:
             now = timezone.now()
             diff = now - obj.start_time
             mins = Decimal(diff.total_seconds() / 60)
             price_min = Decimal(obj.resource.price_per_hour) / Decimal(60)
-            
-            # Сначала форматируем число в строку
             amount_str = f"{round(mins * price_min, 2):.2f}"
-            
-            # Затем передаем готовую строку в format_html
-            return format_html(
-                '<b style="color: #3498db; font-size: 1.2em;">{} сом (текущая)</b>', 
-                amount_str
-            )
+            return format_html('<b style="color: #3498db; font-size: 1.2em;">{} сом (текущая)</b>', amount_str)
         else:
             bill = Bill.objects.filter(session=obj).first()
             if bill:
                 items_total = sum(item.total_price() for item in obj.items.all())
                 table_cost = bill.total_amount - Decimal(items_total)
+                # ✅ FIX: Explicitly format it to a plain string first, then use standard {} placeholder
                 amount_str = f"{table_cost:.2f}"
                 return format_html('<b style="font-size: 1.2em;">{} сом</b>', amount_str)
         return "0.00 сом"
-
-    get_table_only_cost.short_description = "Стоимость времени (Бильярд)"
 
 
 # 4. Bill Admin 
 @admin.register(Bill)
 class BillAdmin(admin.ModelAdmin):
-    # Теперь в списке видны отдельно Бар и Стол
     list_display = ('id', 'session', 'get_table_cost', 'get_items_cost', 'total_amount')
     readonly_fields = ('get_details_html', 'total_amount', 'session')
-    exclude = ()
 
     def get_table_cost(self, obj):
         items_total = sum(item.total_price() for item in obj.session.items.all())
@@ -276,68 +277,59 @@ class BillAdmin(admin.ModelAdmin):
     get_items_cost.short_description = "Сумма бара"
 
     def get_details_html(self, obj):
-        """Генерирует HTML-квитанцию внутри карточки счета"""
         session = obj.session
         items = session.items.all()
         items_total = sum(item.total_price() for item in items)
         table_cost = obj.total_amount - Decimal(items_total)
+        local_start = timezone.localtime(session.start_time)
         
         html = f"""
-        <div style="background: #fff; padding: 20px; border: 1px solid #ccc; border-radius: 8px; max-width: 500px; font-family: monospace;">
-            <h3 style="text-align: center; border-bottom: 2px dashed #000; padding-bottom: 10px;">ДЕТАЛИЗАЦИЯ СЧЕТА #{obj.id}</h3>
+        <div style="background: #fff; padding: 20px; border: 1px solid #ccc; border-radius: 8px; max-width: 500px; font-family: monospace; color: #000;">
+            <h3 style="text-align: center; border-bottom: 2px dashed #000; padding-bottom: 10px; color: #000;">ДЕТАЛИЗАЦИЯ СЧЕТА #{obj.id}</h3>
             <p><b>Ресурс:</b> {session.resource.name}</p>
-            <p><b>Время начала:</b> {session.start_time.strftime('%H:%M')}</p>
+            <p><b>Время начала:</b> {local_start.strftime('%H:%M')}</p>
             <hr style="border: 0; border-top: 1px dashed #000;">
             <table style="width: 100%;">
                 <tr>
-                    <td style="padding: 5px 0;">Услуга: Время</td>
-                    <td style="text-align: right;">{table_cost:.2f} сом</td>
+                    <td style="padding: 5px 0; color: #000;">Услуга: Время</td>
+                    <td style="text-align: right; color: #000;">{table_cost:.2f} сом</td>
                 </tr>
         """
         for item in items:
             html += f"""
                 <tr>
-                    <td style="padding: 5px 0;">{item.product.name} (x{item.quantity})</td>
-                    <td style="text-align: right;">{item.total_price():.2f} сом</td>
+                    <td style="padding: 5px 0; color: #000;">{item.product.name} (x{item.quantity})</td>
+                    <td style="text-align: right; color: #000;">{item.total_price():.2f} сом</td>
                 </tr>
             """
         html += f"""
             </table>
             <hr style="border: 0; border-top: 2px solid #000; margin-top: 10px;">
-            <div style="font-size: 1.4em; font-weight: bold; display: flex; justify-content: space-between;">
+            <div style="font-size: 1.4em; font-weight: bold; display: flex; justify-content: space-between; color: #000;">
                 <span>ИТОГО:</span>
                 <span>{obj.total_amount} сом</span>
             </div>
         </div>
         """
         return mark_safe(html)
-    
     get_details_html.short_description = "Печатная форма"
 
-# 5. Resource & Product Admin
+
+# 5. Resource Admin
 @admin.register(Resource)
 class ResourceAdmin(admin.ModelAdmin):
     list_display = ('name', 'type', 'price_per_hour')
 
+
+# 6. Product Admin
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
-    # Displaying all key metrics in the table rows
-    list_display = (
-        'name', 
-        'cost_price', 
-        'price', 
-        'stock', 
-        'get_margin', 
-        'get_total_cost_value', 
-        'get_total_sales_value'
-    )
-    
+    list_display = ('name', 'cost_price', 'price', 'stock', 'get_margin', 'get_total_cost_value', 'get_total_sales_value')
+    # list_editable = ('is_active',)
     def get_readonly_fields(self, request, obj=None):
-        if obj: # Lock name and stock for existing products
+        if obj: 
             return ['name', 'stock']
         return []
-
-    # --- Individual Row Calculations ---
 
     def get_margin(self, obj):
         margin = obj.price - (obj.cost_price or 0)
@@ -345,32 +337,24 @@ class ProductAdmin(admin.ModelAdmin):
     get_margin.short_description = "Наценка"
 
     def get_total_cost_value(self, obj):
-        # Total capital invested in this product
         total = (obj.stock or 0) * (obj.cost_price or 0)
         return f"{int(total)} сом"
     get_total_cost_value.short_description = "Итого (Закуп)"
 
     def get_total_sales_value(self, obj):
-        # Potential revenue from this product
         total = (obj.stock or 0) * obj.price
         return f"{int(total)} сом"
     get_total_sales_value.short_description = "Итого (Продажа)"
 
-    # --- The "Grand Total" logic ---
-
     def changelist_view(self, request, extra_context=None):
-        # 1. Calculate the totals for the entire inventory
         totals = Product.objects.aggregate(
             all_bar_cost=Sum(F('stock') * F('cost_price')),
             all_bar_sales=Sum(F('stock') * F('price'))
         )
-
         cost_total = math.ceil(totals['all_bar_cost'] or 0)
         sales_total = math.ceil(totals['all_bar_sales'] or 0)
         profit_total = sales_total - cost_total
 
-        # 2. Inject a custom message at the top of the admin page
-        # This bypasses the need for custom HTML files
         summary_message = format_html(
             "📊 <b>ОТЧЕТ ПО СКЛАДУ:</b> "
             "Вложено (Закуп): <span style='color: #d9534f; font-weight: bold;'>{} сом</span> | "
@@ -378,15 +362,10 @@ class ProductAdmin(admin.ModelAdmin):
             "Потенциальная прибыль: <span style='color: #0275d8; font-weight: bold;'>{} сом</span>",
             cost_total, sales_total, profit_total
         )
-        
-        # We clear existing messages to prevent duplicates on refresh
         storage = messages.get_messages(request)
         for _ in storage: pass 
-        
         messages.info(request, summary_message)
 
-        # 3. We still pass it to extra_context just in case you fix the template later
         extra_context = extra_context or {}
         extra_context['summary_text'] = summary_message
-        
         return super().changelist_view(request, extra_context=extra_context)

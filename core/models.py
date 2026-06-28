@@ -204,7 +204,7 @@ class SessionItem(models.Model):
     product = models.ForeignKey(Product, on_delete=models.PROTECT,verbose_name=_("Товар"))
     quantity = models.PositiveIntegerField(default=1,verbose_name=_("Кол-во"))
     price_at_order = models.DecimalField(max_digits=10, decimal_places=2,verbose_name=_("Цена при заказе"))
-
+    is_active = models.BooleanField(default=True, verbose_name=_("Активен (продается)"))
     def total_price(self):
         # We add a check: if price_at_order is None, use 0.00
         price = self.price_at_order if self.price_at_order is not None else 0
@@ -257,7 +257,9 @@ class Shift(models.Model):
 
 
     def __str__(self):
-        return f"Смена {self.user.username} ({self.start_time.strftime('%d.%m %H:%M')})"
+        # Convert the UTC start_time into your project's local timezone (Bishkek)
+        local_start_time = timezone.localtime(self.start_time)
+        return f"Смена {self.user.username} ({local_start_time.strftime('%d.%m %H:%M')})"
 
     def clean(self):
         # Check if another shift is already active
@@ -348,7 +350,9 @@ class StockMovement(models.Model):
 
     product = models.ForeignKey(
         Product, 
-        on_delete=models.CASCADE, 
+        on_delete=models.SET_NULL, 
+        null=True,                 
+        blank=True,
         related_name='movements',
         verbose_name=_("Товар")
     )
