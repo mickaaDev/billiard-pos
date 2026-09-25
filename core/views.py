@@ -20,7 +20,8 @@ def print_session_bill(request, session_id):
     
     # Определяем время окончания (текущее или из базы)
     finish_time = session.end_time if session.end_time else timezone.now()
-    
+    bill = Bill.objects.filter(session=session).first()
+    payment_method = bill.payment_method if bill else "Наличные"
     duration_min = 0
     if session.start_time:
         duration = finish_time - session.start_time
@@ -33,7 +34,7 @@ def print_session_bill(request, session_id):
     grand_total = int(items_total + time_cost)
     
     # Передаем всё в функцию печати (добавили duration_min и finish_time)
-    print_receipt_58mm(session, items, grand_total, finish_time, duration_min)
+    print_receipt_58mm(session, items, grand_total, finish_time, duration_min,payment_method)
     
     # ЛОГИКА РЕДИРЕКТА:
     if not session.is_active or session.end_time:
@@ -240,62 +241,93 @@ def session_detail(request, pk):
 
 @login_required
 def bill_summary(request, pk):
+    """
+    Step 1: Preview the bill. Does NOT close the session yet.
+    Allows operator to review time + items and select payment method.
+    """
     session = get_object_or_404(Session, pk=pk)
-    bill = get_object_or_404(Bill, session=session)
-    
-    # Calculate products based on existing items
+
+    # 1. Calculate durations & costs for preview
+    duration_minutes = session.get_billable_minutes()
+    price_per_min = Decimal(str(session.resource.price_per_hour)) / Decimal(60)
+    time_cost = Decimal(duration_minutes) * price_per_min
+
     session_items = session.items.all()
     product_total = sum(item.total_price() for item in session_items)
-    
-    # Time cost is whatever is left in the total bill
-    time_cost = bill.total_amount - Decimal(product_total)
-    
-    # Billable minutes for display
-    duration_minutes = session.get_billable_minutes()
+    grand_total = time_cost + Decimal(product_total)
 
-    return render(request, "core/bill_summary.html", {
-        "session": session,
-        "duration_minutes": int(duration_minutes), 
-        "time_cost": round(time_cost, 2),
-        "session_items": session_items,
-        "grand_total": bill.total_amount,
-    })
+    return render(
+        request,
+        "core/bill_summary.html",
+        {
+            "session": session,
+            "duration_minutes": int(duration_minutes),
+            "time_cost": round(time_cost, 2),
+            "session_items": session_items,
+            "grand_total": round(grand_total, 2),
+        },
+    )
 
 @require_POST
 @login_required
 def close_session(request, pk):
+    """
+    Step 2: Receives payment choice, closes the session, saves Bill, prints receipts twice.
+    """
     session = get_object_or_404(Session, pk=pk)
-    
+
+    # 1. Read payment method from the pressed button (CASH, CARD, QR)
+    payment_method = request.POST.get("payment_method", "CASH")
+
     if session.is_active:
-        # 1. Handle Pauses
+        # Stop active pauses
         active_pause = session.pauses.filter(resumed_at__isnull=True).last()
         if active_pause:
             active_pause.resumed_at = timezone.now()
             active_pause.save()
 
-        # 2. Fix the End Time (Stop the clock)
+        # Mark session closed
         session.end_time = timezone.now()
-        session.is_active = False # Mark as finished
+        session.is_active = False
         session.save()
 
-        # 3. Calculate Final Billable Data
-        billable_minutes = session.get_billable_minutes()
-        if session.mode == 'PREPAID' and request.POST.get('charge_overtime') != 'true':
-            billable_minutes = Decimal(session.prepaid_minutes)
+    # 2. Calculate Final Bill Data
+    billable_minutes = session.get_billable_minutes()
+    if session.mode == "PREPAID" and request.POST.get("charge_overtime") != "true":
+        billable_minutes = Decimal(session.prepaid_minutes)
 
-        price_per_min = Decimal(str(session.resource.price_per_hour)) / Decimal(60)
-        time_cost = Decimal(billable_minutes) * price_per_min
-        product_total = sum(item.total_price() for item in session.items.all())
-        final_total = time_cost + Decimal(product_total)
+    price_per_min = Decimal(str(session.resource.price_per_hour)) / Decimal(60)
+    time_cost = Decimal(billable_minutes) * price_per_min
 
-        # 4. Create or Update the Bill
-        Bill.objects.update_or_create(
+    session_items = session.items.all()
+    product_total = sum(item.total_price() for item in session_items)
+    final_total = time_cost + Decimal(product_total)
+
+    # 3. Create or Update the Bill
+    Bill.objects.update_or_create(
+        session=session,
+        defaults={
+            "total_amount": round(final_total, 2),
+            "payment_method": payment_method,
+        },
+    )
+
+    # 4. Print 2 Receipts on Thermal Printer
+    duration_min = int(billable_minutes)
+    grand_total = int(final_total)
+
+    for _ in range(2):
+        print_receipt_58mm(
             session=session,
-            defaults={'total_amount': round(final_total, 2)}
+            items=session_items,
+            grand_total=grand_total,
+            finish_time=session.end_time,
+            duration_min=duration_min,
+            payment_method=payment_method,
         )
 
-    # Redirect to summary
-    return redirect('core:bill_summary', pk=session.pk)
+    # 5. Done - return to Dashboard
+    return redirect("core:dashboard")
 
 @require_POST
 @login_required

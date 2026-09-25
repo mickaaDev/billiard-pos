@@ -188,6 +188,16 @@ class OrderItem(models.Model):
 
 
 class Bill(models.Model):
+    class PaymentMethod(models.TextChoices):
+        CASH = 'CASH', _('Наличные')
+        CARD = 'CARD', _('Карта')
+        QR = 'QR', _('QR')
+    payment_method = models.CharField(
+        max_length=10,
+        choices=PaymentMethod.choices,
+        default=PaymentMethod.CASH,
+        verbose_name=_("Способ оплаты")
+    )
     session = models.OneToOneField(
         Session,
         on_delete=models.PROTECT,verbose_name=_("Сессия")
@@ -197,6 +207,8 @@ class Bill(models.Model):
     class Meta:
         verbose_name = 'Счет'
         verbose_name_plural = 'Счета'
+    def __str__(self):
+        return f"Чек №{self.id} — {self.get_payment_method_display()} ({self.total_amount} сом)"
 
 class SessionItem(models.Model):
     # Change 'on_parent_delete' to 'on_delete'

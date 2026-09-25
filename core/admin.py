@@ -258,12 +258,23 @@ class SessionAdmin(admin.ModelAdmin):
                 return format_html('<b style="font-size: 1.2em;">{} сом</b>', amount_str)
         return "0.00 сом"
 
-
-# 4. Bill Admin 
 @admin.register(Bill)
 class BillAdmin(admin.ModelAdmin):
-    list_display = ('id', 'session', 'get_table_cost', 'get_items_cost', 'total_amount')
-    readonly_fields = ('get_details_html', 'total_amount', 'session')
+    list_display = (
+        'id', 
+        'session', 
+        'get_payment_method_display_custom',  # Display payment method in table
+        'get_table_cost', 
+        'get_items_cost', 
+        'total_amount',
+        'closed_at'
+    )
+    list_filter = ('payment_method', 'closed_at')  # Filter bills by Cash, Card, QR
+    readonly_fields = ('get_details_html', 'total_amount', 'payment_method', 'session')
+
+    def get_payment_method_display_custom(self, obj):
+        return obj.get_payment_method_display()
+    get_payment_method_display_custom.short_description = "Способ оплаты"
 
     def get_table_cost(self, obj):
         items_total = sum(item.total_price() for item in obj.session.items.all())
@@ -283,11 +294,15 @@ class BillAdmin(admin.ModelAdmin):
         table_cost = obj.total_amount - Decimal(items_total)
         local_start = timezone.localtime(session.start_time)
         
+        # Human-readable payment method
+        payment_display = obj.get_payment_method_display()
+        
         html = f"""
         <div style="background: #fff; padding: 20px; border: 1px solid #ccc; border-radius: 8px; max-width: 500px; font-family: monospace; color: #000;">
             <h3 style="text-align: center; border-bottom: 2px dashed #000; padding-bottom: 10px; color: #000;">ДЕТАЛИЗАЦИЯ СЧЕТА #{obj.id}</h3>
-            <p><b>Ресурс:</b> {session.resource.name}</p>
+            <p><b>Ресурс:</b> {session.resource.name if session.resource else 'БАР'}</p>
             <p><b>Время начала:</b> {local_start.strftime('%H:%M')}</p>
+            <p><b>Способ оплаты:</b> {payment_display}</p>
             <hr style="border: 0; border-top: 1px dashed #000;">
             <table style="width: 100%;">
                 <tr>
@@ -305,15 +320,14 @@ class BillAdmin(admin.ModelAdmin):
         html += f"""
             </table>
             <hr style="border: 0; border-top: 2px solid #000; margin-top: 10px;">
-            <div style="font-size: 1.4em; font-weight: bold; display: flex; justify-content: space-between; color: #000;">
-                <span>ИТОГО:</span>
+            <div style="font-size: 1.2em; font-weight: bold; display: flex; justify-content: space-between; color: #000;">
+                <span>ОПЛАТА ({payment_display}):</span>
                 <span>{obj.total_amount} сом</span>
             </div>
         </div>
         """
         return mark_safe(html)
     get_details_html.short_description = "Печатная форма"
-
 
 # 5. Resource Admin
 @admin.register(Resource)

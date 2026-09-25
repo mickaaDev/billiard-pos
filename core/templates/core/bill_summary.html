@@ -13,31 +13,49 @@
         <p style="font-size: 1.2em; font-weight: bold; margin: 5px 0;">{{ session.resource.name }}</p>
     </div>
 
-    <table style="width: 100%; border-collapse: collapse; margin-bottom: 30px;">
-    <tr style="border-bottom: 1px solid #f4f4f4;">
-        <td style="padding: 10px 0;">Использованное время ({{ duration_minutes }} мин)</td>
-        <td style="text-align: right; font-weight: bold;">{{ time_cost }} сом</td>
-    </tr>
-    {% for item in session.items.all %}
-    <tr style="border-bottom: 1px solid #f4f4f4;">
-        <td style="padding: 10px 0;">{{ item.product.name }} (x{{ item.quantity }})</td>
-        <td style="text-align: right; font-weight: bold;">{{ item.total_price }} сом</td>
-    </tr>
-    {% endfor %}
-    <tr>
-        <td style="padding: 20px 0; font-size: 1.5em; font-weight: bold;">ОБЩИЙ ИТОГ</td>
-        <td style="padding: 20px 0; text-align: right; font-size: 1.5em; font-weight: bold; color: #28a745;">{{ grand_total }} сом</td>
-    </tr>
-</table>
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 25px;">
+        <tr style="border-bottom: 1px solid #f4f4f4;">
+            <td style="padding: 10px 0;">Использованное время ({{ duration_minutes }} мин)</td>
+            <td style="text-align: right; font-weight: bold;">{{ time_cost }} сом</td>
+        </tr>
+        {% for item in session.items.all %}
+        <tr style="border-bottom: 1px solid #f4f4f4;">
+            <td style="padding: 10px 0;">{{ item.product.name }} (x{{ item.quantity }})</td>
+            <td style="text-align: right; font-weight: bold;">{{ item.total_price }} сом</td>
+        </tr>
+        {% endfor %}
+        <tr>
+            <td style="padding: 20px 0; font-size: 1.5em; font-weight: bold;">ОБЩИЙ ИТОГ</td>
+            <td style="padding: 20px 0; text-align: right; font-size: 1.5em; font-weight: bold; color: #28a745;">{{ grand_total }} сом</td>
+        </tr>
+    </table>
+
+    <!-- PAYMENT METHOD SELECTION & CLOSE FORM -->
+    <form method="POST" action="{% url 'core:close_session' session.pk %}">
+        {% csrf_token %}
+        <h3 style="font-size: 0.9em; color: #888; text-transform: uppercase; margin-bottom: 10px;">Выберите способ оплаты:</h3>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 20px;">
+            <button type="submit" name="payment_method" value="CASH" style="padding: 14px 8px; background: #28a745; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 0.95em;">
+                💵 Наличные
+            </button>
+            <button type="submit" name="payment_method" value="CARD" style="padding: 14px 8px; background: #007bff; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 0.95em;">
+                💳 Карта
+            </button>
+            <button type="submit" name="payment_method" value="QR" style="padding: 14px 8px; background: #6f42c1; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 0.95em;">
+                📱 QR
+            </button>
+        </div>
+    </form>
 
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-    <a href="{% url 'core:print_session_bill' session.id %}" style="padding: 12px; background: #28a745; color: white; text-decoration: none; text-align: center; border-radius: 8px; font-weight: bold;">
-        🖨️ Напечатать чек
-    </a>
-    
-    <a href="{% url 'core:dashboard' %}" style="padding: 12px; background: #2c3e50; color: white; text-decoration: none; text-align: center; border-radius: 8px; font-weight: bold;">
-        Закрыть
-    </a>
-</div>
+        <a href="{% url 'core:print_session_bill' session.id %}" style="padding: 12px; background: #6c757d; color: white; text-decoration: none; text-align: center; border-radius: 8px; font-weight: bold;">
+            🖨️ Пробная печать
+        </a>
+        <a href="{% url 'core:dashboard' %}" style="padding: 12px; background: #2c3e50; color: white; text-decoration: none; text-align: center; border-radius: 8px; font-weight: bold;">
+            Отмена
+        </a>
+    </div>
+
 </div>
 {% endblock %}

@@ -167,17 +167,113 @@
         </div>
 
         <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 12px; margin-bottom: 15px;">
-            <form action="{% url 'core:close_session' session.id %}" method="post" style="margin: 0;">
-                {% csrf_token %}
-                {% if overtime_minutes > 0 %}
-                <div style="background: #fffaf0; border: 1px solid #feebc8; padding: 8px; border-radius: 6px; margin-bottom: 10px; font-size: 0.8em; display: flex; align-items: center; gap: 10px;">
-                    <input type="checkbox" name="charge_overtime" value="true" checked>
-                    <span>Добавить {{ overtime_minutes }} мин переработки</span>
-                </div>
-                {% endif %}
-                <button type="submit" class="action-btn btn-close" onclick="return confirm('Завершить сессию?')">ЗАВЕРШИТЬ СЕАНС</button>
-            </form>
-            <a href="{% url 'core:print_session_bill' session.id %}" class="action-btn btn-print">🖨️ ЧЕК</a>
+<!-- PAYMENT METHOD & ACTION BUTTONS -->
+<form action="{% url 'core:close_session' session.id %}" method="post" style="margin-top: 16px; margin-bottom: 20px;">
+    {% csrf_token %}
+
+    {% if overtime_minutes > 0 %}
+    <div style="background: #fffaf0; border: 1px solid #feebc8; padding: 6px 12px; border-radius: 6px; margin-bottom: 12px; font-size: 0.8em; display: flex; align-items: center; gap: 8px; color: #744210;">
+        <input type="checkbox" name="charge_overtime" value="true" checked id="overtime_chk" style="cursor: pointer;">
+        <label for="overtime_chk" style="cursor: pointer;">
+            Добавить {{ overtime_minutes }} мин переработки
+        </label>
+    </div>
+    {% endif %}
+
+    <!-- Payment + Actions -->
+    <div style="display: flex; gap: 8px; align-items: center; width: 100%;">
+
+        <!-- Payment Method -->
+        <select
+            name="payment_method"
+            id="payment_method"
+            style="
+                width: 100;
+                box-sizing: border-box;
+                flex: 1.2;
+                height: 42px;
+                padding: 0 10px;
+                border: 1px solid #cbd5e0;
+                border-radius: 8px;
+                font-size: 0.88em;
+                font-weight: 600;
+                color: #2d3748;
+                background-color: #f8fafc;
+                cursor: pointer;
+                outline: none;
+            "
+        >
+            <option value="CASH">💵 Наличные</option>
+            <option value="CARD">💳 Карта</option>
+            <option value="QR">📱 QR</option>
+        </select>
+
+        <!-- Print Button -->
+        <a
+            href="{% url 'core:print_session_bill' session.id %}"
+            style="
+                width: 220;
+                box-sizing: border-box;
+                flex: 0 0 auto;
+                height: 42px;
+                padding: 0 24px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 4px;
+                background: #edf2f7;
+                color: #4a5568;
+                text-decoration: none;
+                border-radius: 8px;
+                font-weight: 600;
+                font-size: 0.85em;
+                border: 1px solid #cbd5e0;
+                white-space: nowrap;
+                transition: background 0.2s ease;
+            "
+            onmouseover="this.style.background='#e2e8f0'"
+            onmouseout="this.style.background='#edf2f7'"
+        >
+            🖨️ ЧЕК
+        </a>
+
+        <!-- Finish Session -->
+        <button
+            type="submit"
+            style="
+                width: 300;
+                box-sizing: border-box;
+                flex: 1.0;
+                height: 42px;
+                padding: 0 12px;
+                background: #e53e3e;
+                color: white;
+                border: none;
+                border-radius: 8px;
+                font-weight: 700;
+                font-size: 0.85em;
+                letter-spacing: 0.02em;
+                cursor: pointer;
+                white-space: nowrap;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 6px;
+                box-shadow: 0 2px 6px rgba(229, 62, 62, 0.2);
+                transition: all 0.2s ease;
+            "
+            onmouseover="this.style.background='#c53030'"
+            onmouseout="this.style.background='#e53e3e'"
+            onclick="return confirm('Завершить сессию и напечатать чеки?')"
+        >
+            🏁 ЗАВЕРШИТЬ
+        </button>
+
+    </div>
+</form>
+
+
+            
         </div>
         
         <a href="{% url 'core:dashboard' %}" style="display: block; text-align: center; color: #718096; text-decoration: none; font-size: 0.85em; margin-bottom: 30px;">« Вернуться на главную</a>
