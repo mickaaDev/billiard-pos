@@ -175,6 +175,7 @@ def remove_item_from_session(request, item_id):
             messages.error(request, "Нельзя изменять закрытую сессию.")
         
         return redirect('core:session_detail', pk=session_id)
+
     
     return redirect('core:dashboard')
 
@@ -190,11 +191,12 @@ def session_detail(request, pk):
     
     price_per_hour = Decimal(str(session.resource.price_per_hour))
     price_per_minute = price_per_hour / Decimal(60)
-    played_seconds = session.get_total_played_seconds()
+    played_seconds = session.get_total_played_seconds() 
     
     # 2. Determine Cost based on Mode
     active_pause = session.pauses.filter(resumed_at__isnull=True).first()
     if active_pause:
+
         pause_duration = (now - active_pause.paused_at).total_seconds() / 60
         if pause_duration > 5:
             active_pause.resumed_at = active_pause.paused_at + timezone.timedelta(minutes=5)
