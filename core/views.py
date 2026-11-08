@@ -184,7 +184,10 @@ def remove_item_from_session(request, item_id):
 def session_detail(request, pk):
     session = get_object_or_404(Session, pk=pk)
     now = timezone.now()
-    
+
+
+
+
     # 1. Use our model method to get billable minutes (includes pause logic)
     billable_minutes_float = session.get_billable_minutes()
     duration_minutes_display = int(billable_minutes_float)
