@@ -6,6 +6,9 @@ from django.db.models import Sum
 from django.utils.translation import gettext_lazy as _
 from django.core.exceptions import ValidationError
 from datetime import timedelta
+# from .models import SessionItem
+from django.db.models import Sum, F
+from django.utils import timezone
 
 class Resource(models.Model):
     RESOURCE_TYPE = (
@@ -213,7 +216,7 @@ class Bill(models.Model):
 class SessionItem(models.Model):
     # Change 'on_parent_delete' to 'on_delete'
     session = models.ForeignKey(Session, on_delete=models.CASCADE, related_name='items',verbose_name=_("Сессия"))
-    product = models.ForeignKey(Product, on_delete=models.PROTECT,verbose_name=_("Товар"))
+    product = models.ForeignKey(Product, on_delete=models.SET_NULL, null=True, blank=True,verbose_name=_("Товар"))
     quantity = models.PositiveIntegerField(default=1,verbose_name=_("Кол-во"))
     price_at_order = models.DecimalField(max_digits=10, decimal_places=2,verbose_name=_("Цена при заказе"))
     is_active = models.BooleanField(default=True, verbose_name=_("Активен (продается)"))
@@ -285,18 +288,15 @@ class Shift(models.Model):
     def save(self, *args, **kwargs):
         self.full_clean()
         super().save(*args, **kwargs)
-    
-    def get_shift_report(self):
-        from .models import Bill, SessionItem
-        from django.db.models import Sum, F
-        from django.utils import timezone
 
+    def get_shift_report(self):
         end = self.end_time if self.end_time else timezone.now()
         bills = Bill.objects.filter(closed_at__range=(self.start_time, end))
 
         total_revenue = bills.aggregate(Sum('total_amount'))['total_amount__sum'] or 0
 
-        items = SessionItem.objects.filter(session__bill__in=bills)
+        # Only pull items where the product still exists
+        items = SessionItem.objects.filter(session__bill__in=bills, product__isnull=False)
 
         bar_revenue = 0
         bar_cost = 0
@@ -304,8 +304,8 @@ class Shift(models.Model):
 
         for item in items:
             bar_revenue += item.total_price()
-            # Fallback to 0 if cost_price is None
-            c_price = item.product.cost_price or 0
+            # Safe fallback if cost_price is None or product was deleted
+            c_price = item.product.cost_price if (item and item.product) else 0
             bar_cost += (c_price * item.quantity)
             total_items_sold += item.quantity
 

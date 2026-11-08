@@ -178,18 +178,20 @@ def remove_item_from_session(request, item_id):
     
     return redirect('core:dashboard')
 
+
 @login_required
 def session_detail(request, pk):
     session = get_object_or_404(Session, pk=pk)
     now = timezone.now()
     
-    # 1. Use our new model method to get billable minutes (includes pause logic)
+    # 1. Use our model method to get billable minutes (includes pause logic)
     billable_minutes_float = session.get_billable_minutes()
     duration_minutes_display = int(billable_minutes_float)
     
     price_per_hour = Decimal(str(session.resource.price_per_hour))
     price_per_minute = price_per_hour / Decimal(60)
-    played_seconds = session.get_total_played_seconds() # Assuming you have this method
+    played_seconds = session.get_total_played_seconds()
+    
     # 2. Determine Cost based on Mode
     active_pause = session.pauses.filter(resumed_at__isnull=True).first()
     if active_pause:
@@ -203,8 +205,6 @@ def session_detail(request, pk):
 
     if session.mode == 'PREPAID' and session.prepaid_minutes:
         billable_minutes = Decimal(session.prepaid_minutes)
-        # For prepaid, overtime starts after (prepaid_mins + pause_credit)
-        # But usually, clubs just stop the clock. Let's keep it simple:
         limit_time = session.start_time + timezone.timedelta(minutes=session.prepaid_minutes)
         remaining_seconds = max(0, (limit_time - now).total_seconds())
         is_expired = now >= limit_time
@@ -220,10 +220,16 @@ def session_detail(request, pk):
     product_total = sum(item.total_price() for item in session_items)
     grand_total = time_cost + Decimal(product_total)
 
-    # To show the countdown/timer for the current pause in HTML
-    
+    # 3. Bar Menu Search Logic
+    search_query = request.GET.get('q', '')
+    products = Product.objects.all()
+    if search_query:
+        products = products.filter(name__icontains=search_query)
+    products = products.order_by('name')
+
     if not session.is_active:
         return redirect('core:bill_summary', pk=session.pk)
+        
     return render(request, "core/session_detail.html", {
         "session": session,
         "session_items": session_items,
@@ -231,11 +237,12 @@ def session_detail(request, pk):
         "time_cost": round(time_cost, 2),
         "product_total": round(product_total, 2),
         "grand_total": round(grand_total, 2),
-        "products": Product.objects.all().order_by('name'),
+        "products": products,
+        "search_query": search_query,
         "remaining_seconds": int(remaining_seconds),
         "is_expired": is_expired,
         "overtime_minutes": overtime_minutes,
-        "active_pause": active_pause,  # New: Pass this to show "Time on pause"
+        "active_pause": active_pause,
         'played_seconds': played_seconds
     })
 
